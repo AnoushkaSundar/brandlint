@@ -1,0 +1,29 @@
+# Replace the two placeholders with your GitHub usernames before committing.
+# Every PR touching a path below automatically requests review from its owner.
+
+# Alapan: AI engine, backend, security
+/api/app/engine/        @AlapanSen
+/api/app/gateway/       @AlapanSen
+/api/app/memory/        @AlapanSen
+/api/app/governance/    @AlapanSen
+/requirements/engine.txt @AlapanSen
+/docker-compose.yml     @AlapanSen
+/.github/               @AlapanSen
+
+# Anoushka: product, workflow, governance UI, visual checks
+/web/                   @AnoushkaSundar
+/api/app/auth/          @AnoushkaSundar
+/api/app/content/       @AnoushkaSundar
+/api/app/workflow/      @AnoushkaSundar
+/api/app/admin/         @AnoushkaSundar
+/api/app/insights/      @AnoushkaSundar
+/api/app/checks/        @AnoushkaSundar
+/api/mocks/             @AnoushkaSundar
+/demo/                  @AnoushkaSundar
+/requirements/product.txt @AnoushkaSundar
+
+# Shared: both must approve
+/api/app/contracts/     @AlapanSen @AnoushkaSundar
+/api/app/main.py        @AlapanSen @AnoushkaSundar
+/CLAUDE.md              @AlapanSen @AnoushkaSundar
+/docs/                  @AlapanSen @AnoushkaSundar

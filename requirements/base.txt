@@ -1,0 +1,12 @@
+# Shared tooling only. Pin exact versions in block 2 (pip freeze into this file).
+-r engine.txt
+-r product.txt
+fastapi
+uvicorn[standard]
+sqlalchemy>=2
+alembic
+pydantic>=2
+psycopg[binary]
+pytest
+ruff
+httpx

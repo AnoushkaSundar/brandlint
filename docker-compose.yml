@@ -1,0 +1,17 @@
+# Block 1 starting point. Alapan completes api/web/litellm/presidio services in blocks 1–2.
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: brandlint
+      POSTGRES_PASSWORD: brandlint
+      POSTGRES_DB: brandlint
+    ports: ["5432:5432"]
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+  # api:      FastAPI app (build: ./api), depends_on db
+  # web:      Next.js app (build: ./web)
+  # litellm:  LiteLLM proxy, image pinned to an exact version
+  # presidio-analyzer / presidio-anonymizer: mcr.microsoft.com/presidio-*
+  # ollama, neo4j: put behind compose profiles so the default `up` stays light
+volumes:
+  pgdata:

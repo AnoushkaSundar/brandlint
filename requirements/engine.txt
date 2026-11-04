@@ -1,0 +1,2 @@
+# Alapan's dependencies. Pin exact versions.
+# Never add litellm 1.82.7 or 1.82.8 (malicious PyPI releases, March 2026).
