@@ -1,5 +1,8 @@
-# Replace the two placeholders with your GitHub usernames before committing.
-# Every PR touching a path below automatically requests review from its owner.
+# Ownership map for BrandLint. NOTE: branch protection has code-owner reviews
+# turned OFF on purpose (with only two people, each the sole owner of their own
+# folders, required code-owner review + enforce_admins would block self-owned
+# PRs since GitHub forbids self-approval). So this file documents ownership but
+# does NOT auto-request reviews — request each other by hand on every PR.
 
 # Alapan: AI engine, backend, security
 /api/app/engine/        @AlapanSen
