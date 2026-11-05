@@ -417,10 +417,12 @@ BANNER_HEADLINE = "Make every first week count"
 BANNER_CHUNKS = [("banner-image", ""), ("banner-ocr-1", BANNER_HEADLINE)]
 
 
+def write_text(path, text):
+    path.write_text(text, encoding="utf-8", newline="\n")
+
+
 def write_json(path, data):
-    path.write_text(
-        json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
-    )
+    write_text(path, json.dumps(data, indent=2, ensure_ascii=False) + "\n")
 
 
 def build_rules():
@@ -490,7 +492,7 @@ def build_logo():
         'width="240" height="180" role="img" aria-label="Tarnhollow logo">\n'
         f"{polygons}\n</svg>\n"
     )
-    (BRAND / "logo.svg").write_text(svg, encoding="utf-8")
+    write_text(BRAND / "logo.svg", svg)
 
     document = pymupdf.open(stream=svg.encode("utf-8"), filetype="svg")
     pixmap = document[0].get_pixmap(matrix=pymupdf.Matrix(4, 4), alpha=True)
@@ -701,7 +703,7 @@ def build_linkedin():
         f'<body style="background-color:#ffffff">\n  <article>\n{body}\n'
         "  </article>\n</body>\n</html>\n"
     )
-    (PIECES / "linkedin-post.html").write_text(html, encoding="utf-8")
+    write_text(PIECES / "linkedin-post.html", html)
 
 
 def relative_luminance(hex_colour):

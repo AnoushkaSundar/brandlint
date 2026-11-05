@@ -61,10 +61,14 @@ def load(*parts):
     return json.loads(DEMO.joinpath(*parts).read_text(encoding="utf-8"))
 
 
-def normalise(text):
-    # PDF text can hold ligature characters such as the single-glyph "fi" in
-    # "first". NFKC expands them, as any parser reading PDFs needs to.
-    return re.sub(r"\s+", " ", unicodedata.normalize("NFKC", text)).strip()
+def without_layout(text):
+    """Strips what PDF layout adds, so wrapped text compares equal to its source.
+
+    PDF text can hold ligature characters such as the single-glyph "fi" in "first",
+    which NFKC expands. Removing whitespace also rejoins lines that wrapped at a
+    hyphen, as in "AI-generated".
+    """
+    return re.sub(r"\s+", "", unicodedata.normalize("NFKC", text))
 
 
 RULES = {rule["id"]: rule for rule in load("brand", "rules.json")}
@@ -256,9 +260,9 @@ def test_guideline_pdf_quotes_every_rule():
     document = pymupdf.open(DEMO / "brand" / "guidelines.pdf")
     assert 4 <= document.page_count <= 6
 
-    text = normalise(" ".join(page.get_text() for page in document))
+    text = without_layout(" ".join(page.get_text() for page in document))
     for rule in RULES.values():
-        assert normalise(rule["text"]) in text
+        assert without_layout(rule["text"]) in text
         assert rule["clause_ref"].removeprefix("§") in text
 
 
