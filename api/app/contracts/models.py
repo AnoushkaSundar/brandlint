@@ -7,7 +7,7 @@ elsewhere (per owner) and are not these classes.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
@@ -102,6 +102,10 @@ class Rule(BaseModel):
     channel_scope: list[str] = Field(default_factory=list)
     status: RuleStatus
     supersedes: str | None = None
+    # For must_include rules: the exact text that must appear in the content
+    # (distinct from `text`, which describes the rule). The tier-0
+    # required-element check looks for this, not the rule sentence.
+    required_text: str | None = None
 
 
 class Fact(BaseModel):
@@ -110,7 +114,7 @@ class Fact(BaseModel):
     value: str
     source_doc: str
     owner: str
-    valid_until: datetime | None = None
+    valid_until: date | None = None
     data_class: DataClass
     version: int
 
@@ -120,6 +124,11 @@ class Term(BaseModel):
     preferred: str
     banned: list[str] = Field(default_factory=list)
     renamed_from: str | None = None
+    # The terminology rule this term is governed by. The tier-0 terms check
+    # cites this rule (and uses its severity), so different terms can carry
+    # different severities.
+    rule_id: str | None = None
+    rule_version: int | None = None
 
 
 class Asset(BaseModel):
@@ -186,3 +195,16 @@ class Proposal(BaseModel):
     evidence: ProposalEvidence
     eval: ProposalEval | None = None
     status: ProposalStatus
+
+
+class Chunk(BaseModel):
+    """A parsed content chunk, as served to the review screen."""
+
+    id: str
+    content_version_id: str
+    ordinal: int
+    kind: str  # heading | paragraph | image
+    text: str
+    content_hash: str
+    data_class: DataClass
+    style: dict | None = None
