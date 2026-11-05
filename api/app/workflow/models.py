@@ -4,7 +4,8 @@ from typing import Any
 from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.auth.database import Base, new_id, utc_now
+from app.auth.defaults import new_id, utc_now
+from app.db import Base
 
 
 class Review(Base):

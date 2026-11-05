@@ -5,10 +5,10 @@ import jwt
 from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
-from app.auth.database import get_session
 from app.auth.models import User
-from app.auth.roles import Role
 from app.auth.security import SESSION_COOKIE, decode_token
+from app.contracts import Role
+from app.db import get_session
 
 SessionDep = Annotated[Session, Depends(get_session)]
 
@@ -44,8 +44,8 @@ CurrentUser = Annotated[User, Depends(current_user)]
 
 
 def require_roles(*roles: Role) -> Callable[[User], User]:
-    """Use as `Depends(require_roles(Role.ADMIN))` to guard a route."""
-    allowed = frozenset(roles)
+    """Use as `Depends(require_roles(Role.admin))` to guard a route."""
+    allowed = frozenset(role.value for role in roles)
 
     def check(user: CurrentUser) -> User:
         if user.role not in allowed:

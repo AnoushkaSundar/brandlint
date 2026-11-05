@@ -8,10 +8,9 @@ from typing import Annotated
 import jwt
 import pytest
 from app.admin import models as admin_models  # noqa: F401
-from app.auth.database import Base, get_session, utc_now
+from app.auth.defaults import utc_now
 from app.auth.dependencies import require_roles
 from app.auth.models import User
-from app.auth.roles import Role
 from app.auth.router import router
 from app.auth.security import (
     SESSION_COOKIE,
@@ -21,6 +20,8 @@ from app.auth.security import (
 )
 from app.auth.seed import DEFAULT_PASSWORD, SEED_USERS, seed_users
 from app.content import models as content_models  # noqa: F401
+from app.contracts import Role
+from app.db import Base, get_session
 from app.workflow import models as workflow_models  # noqa: F401
 from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
@@ -56,12 +57,12 @@ def client(session):
     app.include_router(router)
 
     @app.get("/admin-only")
-    def admin_only(user: Annotated[User, Depends(require_roles(Role.ADMIN))]):
+    def admin_only(user: Annotated[User, Depends(require_roles(Role.admin))]):
         return {"id": user.id}
 
     @app.get("/reviewers-and-managers")
     def reviewers_and_managers(
-        user: Annotated[User, Depends(require_roles(Role.REVIEWER, Role.MANAGER))],
+        user: Annotated[User, Depends(require_roles(Role.reviewer, Role.manager))],
     ):
         return {"id": user.id}
 
@@ -69,7 +70,7 @@ def client(session):
     return TestClient(app)
 
 
-def add_user(session: Session, role: Role = Role.CREATOR, email="sam@example.com"):
+def add_user(session: Session, role: Role = Role.creator, email="sam@example.com"):
     user = User(
         email=email,
         name="Sam",
@@ -87,7 +88,7 @@ def bearer(token: str) -> dict[str, str]:
 
 
 def test_login_returns_the_user_and_a_token(client, session):
-    user = add_user(session, Role.REVIEWER)
+    user = add_user(session, Role.reviewer)
 
     response = client.post(
         "/auth/login", json={"email": user.email, "password": PASSWORD}
@@ -259,18 +260,18 @@ def test_a_token_for_a_deleted_user_is_rejected(client, session):
 
 
 def test_a_token_cannot_raise_its_own_role(client, session):
-    creator = add_user(session, Role.CREATOR)
+    creator = add_user(session, Role.creator)
     token = jwt.encode(claims_for(creator, role="admin"), SECRET, "HS256")
 
     assert client.get("/admin-only", headers=bearer(token)).status_code == 403
 
 
 def test_a_role_change_applies_to_tokens_already_issued(client, session):
-    user = add_user(session, Role.ADMIN)
+    user = add_user(session, Role.admin)
     token = create_token(user)
     assert client.get("/admin-only", headers=bearer(token)).status_code == 200
 
-    user.role = Role.CREATOR
+    user.role = Role.creator
     session.commit()
 
     assert client.get("/admin-only", headers=bearer(token)).status_code == 403
@@ -284,8 +285,8 @@ def test_each_role_gets_only_what_it_is_allowed(client, session, role):
     admin_only = client.get("/admin-only", headers=headers).status_code
     mixed = client.get("/reviewers-and-managers", headers=headers).status_code
 
-    assert admin_only == (200 if role is Role.ADMIN else 403)
-    assert mixed == (200 if role in (Role.REVIEWER, Role.MANAGER) else 403)
+    assert admin_only == (200 if role is Role.admin else 403)
+    assert mixed == (200 if role in (Role.reviewer, Role.manager) else 403)
 
 
 def test_role_checks_require_a_session(client):
@@ -305,7 +306,7 @@ def test_seed_creates_every_role_and_both_creator_tags(session):
 
     users = list(session.scalars(select(User)))
     assert {user.role for user in users} == set(Role)
-    tags = {user.tag for user in users if user.role == Role.CREATOR}
+    tags = {user.tag for user in users if user.role == Role.creator}
     assert tags == {None, "agency", "in-house"}
     assert len(users) == 7
 

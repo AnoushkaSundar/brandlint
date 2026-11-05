@@ -23,16 +23,24 @@ if config.config_file_name is not None:
 
 # Import every owner's table modules so their tables register on Base.metadata
 # for --autogenerate. Referenced in _TABLES below so linters see them as used.
+import app.admin.models
+import app.auth.models
+import app.content.models
 import app.engine.models
 import app.gateway.models
 import app.governance.models
 import app.memory.models
+import app.workflow.models
 
 _TABLES = (
+    app.admin.models,
+    app.auth.models,
+    app.content.models,
     app.engine.models,
     app.gateway.models,
     app.governance.models,
     app.memory.models,
+    app.workflow.models,
 )
 
 target_metadata = Base.metadata

@@ -8,22 +8,22 @@ import os
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth.database import session_factory
 from app.auth.models import User
-from app.auth.roles import Role
 from app.auth.security import hash_password
+from app.contracts import Role
+from app.db import get_sessionmaker
 
 DEFAULT_PASSWORD = "brandlint-demo"
 
 # One user per role, plus an agency creator and an in-house creator.
 SEED_USERS = [
-    ("creator@tarnhollow.example", "Sam Okafor", Role.CREATOR, None),
-    ("reviewer@tarnhollow.example", "Lena Fischer", Role.REVIEWER, None),
-    ("manager@tarnhollow.example", "Marcus Bell", Role.MANAGER, None),
-    ("legal@tarnhollow.example", "Aisha Rahman", Role.LEGAL, None),
-    ("admin@tarnhollow.example", "Noor Haddad", Role.ADMIN, None),
-    ("agency@tarnhollow.example", "Priya Nair", Role.CREATOR, "agency"),
-    ("inhouse@tarnhollow.example", "Tom Reid", Role.CREATOR, "in-house"),
+    ("creator@tarnhollow.example", "Sam Okafor", Role.creator, None),
+    ("reviewer@tarnhollow.example", "Lena Fischer", Role.reviewer, None),
+    ("manager@tarnhollow.example", "Marcus Bell", Role.manager, None),
+    ("legal@tarnhollow.example", "Aisha Rahman", Role.legal, None),
+    ("admin@tarnhollow.example", "Noor Haddad", Role.admin, None),
+    ("agency@tarnhollow.example", "Priya Nair", Role.creator, "agency"),
+    ("inhouse@tarnhollow.example", "Tom Reid", Role.creator, "in-house"),
 ]
 
 
@@ -36,7 +36,7 @@ def seed_users(session: Session, password: str = DEFAULT_PASSWORD) -> int:
         User(
             email=email,
             name=name,
-            role=role,
+            role=role.value,
             tag=tag,
             password_hash=password_hash,
         )
@@ -48,7 +48,7 @@ def seed_users(session: Session, password: str = DEFAULT_PASSWORD) -> int:
 
 def main() -> None:
     password = os.environ.get("SEED_PASSWORD", DEFAULT_PASSWORD)
-    with session_factory()() as session:
+    with get_sessionmaker()() as session:
         created = seed_users(session, password)
     print(f"Created {created} users, {len(SEED_USERS)} expected in total.")
 

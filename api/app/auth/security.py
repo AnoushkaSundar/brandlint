@@ -6,7 +6,7 @@ import jwt
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError
 
-from app.auth.database import utc_now
+from app.auth.defaults import utc_now
 from app.auth.models import User
 
 SESSION_COOKIE = "brandlint_session"

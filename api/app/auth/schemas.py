@@ -1,6 +1,6 @@
 from pydantic import BaseModel, ConfigDict
 
-from app.auth.roles import Role
+from app.contracts import Role
 
 
 class LoginRequest(BaseModel):
