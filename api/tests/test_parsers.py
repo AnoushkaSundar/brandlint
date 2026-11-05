@@ -58,6 +58,14 @@ def test_dispatch_rejects_unknown_format():
         parse("x", "rtf")
 
 
+def test_text_is_nfkc_normalised():
+    # Ligatures (a single "ﬁ" glyph) expand so parsed text matches plain rulebook
+    # text — the PDF-extraction gotcha from PR #4.
+    doc = parse("The ﬁrst draft is ﬁne.", "text")
+    assert "first" in doc.blocks[0].text
+    assert "ﬁ" not in doc.blocks[0].text
+
+
 def test_chunking_has_stable_ids_and_sha256_hashes():
     doc = parse("Head\n\nBody one.\n\nBody two.", "text")
     chunks = chunk_document(doc, "cv1", data_class="internal")

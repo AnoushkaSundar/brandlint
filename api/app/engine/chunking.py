@@ -1,10 +1,12 @@
-"""Chunking: turn a NormalisedDoc into stable, content-hashed chunks.
+"""Chunking: turn a NormalisedDoc into content-hashed chunks.
 
-- **Stable id**: ``{content_version_id}:{ordinal}`` — the same block position keeps
-  the same id across versions, so re-review can map chunks and re-check only the
-  ones whose hash changed.
-- **content_hash**: SHA-256 of the block text, used for change detection and as
-  part of the verdict cache key.
+- **id**: ``{content_version_id}:{ordinal}`` — deterministic within a version
+  (a given parse always yields the same ids), and unique in the `chunks` table.
+  It is **not** stable across versions, because each version has its own id.
+- **content_hash**: SHA-256 of the block text. Incremental re-review relies on
+  THIS, not on id stability: a new version's chunk whose hash matches a cached
+  verdict reuses it, and only hash-changed chunks are re-checked (verdict cache,
+  block 5). Chunks are mapped across versions by ordinal.
 
 Produces lightweight ``ParsedChunk`` dataclasses whose ``as_dict()`` matches the
 columns of the ``chunks`` table; the orchestration layer maps them to the ORM.
