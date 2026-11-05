@@ -1,2 +1,10 @@
 # Alapan's dependencies. Pin exact versions.
 # Never add litellm 1.82.7 or 1.82.8 (malicious PyPI releases, March 2026).
+
+# Parsers (block 3)
+python-docx==1.1.2        # DOCX
+pymupdf==1.24.10          # PDF (imported as `fitz`/`pymupdf`)
+beautifulsoup4==4.12.3    # HTML
+lxml==5.3.0               # docx/bs4 backend
+pytesseract==0.3.13       # image OCR (needs the tesseract-ocr system binary)
+pillow==10.4.0            # image loading for OCR
