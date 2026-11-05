@@ -415,3 +415,14 @@ def test_pasted_text_has_no_file(client_for):
     version = create(client).json()["versions"][0]
 
     assert client.get(f"/content/versions/{version['id']}/file").status_code == 404
+
+
+def test_a_blank_file_field_from_a_browser_is_ignored(client_for):
+    response = client_for().post(
+        "/content",
+        data={**FORM, "text": "Hello"},
+        files={"file": ("", b"", "application/octet-stream")},
+    )
+
+    assert response.status_code == 201
+    assert response.json()["versions"][0]["file_name"] is None

@@ -57,7 +57,12 @@ def _owned(content_id: str, user: User, session: Session) -> Content:
     return content
 
 
-def _body_from(text: str, file: UploadFile | None) -> tuple[str, storage.CheckedUpload | None]:
+def _body_from(
+    text: str, file: UploadFile | None
+) -> tuple[str, storage.CheckedUpload | None]:
+    # A browser sends an unnamed empty file when the file field is left blank.
+    if file is not None and not file.filename:
+        file = None
     has_text = bool(text.strip())
     if has_text and file is not None:
         raise HTTPException(
