@@ -22,6 +22,7 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 # --- owners import their table modules here (see module docstring) ---
+import app.gateway.models  # noqa: F401  (gateway_log)
 
 target_metadata = Base.metadata
 
