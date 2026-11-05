@@ -151,6 +151,16 @@ export function isActivePath(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
+// Only paths on this site, so a crafted link can't send someone elsewhere after sign-in.
+export function safeNextPath(next: unknown): string {
+  const isLocalPath =
+    typeof next === "string" &&
+    next.startsWith("/") &&
+    !next.startsWith("//") &&
+    !next.startsWith("/\\");
+  return isLocalPath ? next : HOME_HREF;
+}
+
 export function canRoleOpen(role: Role, pathname: string): boolean {
   return navForRole(role)
     .flatMap((group) => group.items)
