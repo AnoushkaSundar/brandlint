@@ -42,9 +42,10 @@ Finding {
 }
 
 Rule      { id, version, type: deterministic|judgment|must_include, text, clause_ref,
-            severity, channel_scope: [str], status: draft|approved|retired, supersedes? }
-Fact      { id, statement, value, source_doc, owner, valid_until?, data_class, version }
-Term      { id, preferred, banned: [str], renamed_from?: str }
+            severity, channel_scope: [str], status: draft|approved|retired, supersedes?,
+            required_text? }   # v2: exact text a must_include rule requires
+Fact      { id, statement, value, source_doc, owner, valid_until?: date, data_class, version }
+Term      { id, preferred, banned: [str], renamed_from?: str, rule_id?, rule_version? }  # v2: governing rule
 Asset     { id, kind: logo|palette|image|font, file_ref, meta }
 Decision  { id, finding_id, actor_id, role, action, reason?, created_at }
             action = accept_fix | edit_fix | override | confirm_override | reject_override | resolve
@@ -54,7 +55,17 @@ Precedent { decision_id, rule_id, rule_version, channel, reason, reviewer, date 
 Proposal  { id, rule_id, kind: amendment|anchor|term|severity, current, suggested,
             evidence: { count, examples: [span] }, eval?: { passed, precision, recall },
             status: pending|approved|rejected }
+Chunk     { id, content_version_id, ordinal, kind: heading|paragraph|image, text,
+            content_hash, data_class, style? }   # v2: served to the review screen
 ```
+
+### contracts/v2 changes
+
+- `Rule.required_text?` — the exact text a `must_include` rule requires (the tier-0 required-element check looks for this, not the rule sentence).
+- `Term.rule_id?` / `Term.rule_version?` — the terminology rule a term is governed by, so findings cite the right rule and severity per term.
+- `Fact.valid_until` is a **date** (was datetime), matching the facts table.
+- New `Chunk` model + engine endpoint (below) for the review screen.
+
 
 ## Service interfaces
 
@@ -65,6 +76,7 @@ Alapan provides these. Anoushka mocks them under `api/mocks/` until they're buil
 | `POST /engine/reviews {content_version_id, channel, rulebook_version}` → `{review_id}` | start an AI review |
 | `GET /engine/reviews/{id}/findings` (SSE) | stream findings; tier 0 first |
 | `POST /engine/reviews/{id}/recheck {changed_chunk_ids}` | incremental re-review |
+| `GET /engine/reviews/{id}/chunks` → `[Chunk]` | parsed chunks for the review screen (v2) |
 | `POST /engine/findings/{id}/fix` → `FixSuggestion` | lazy fix, max 2 attempts |
 | `POST /engine/verdicts/{finding_id}/replay` → `{identical: bool, verdict, manifest}` | Replay |
 | `POST /engine/eval/gate {proposal}` → `{passed, precision, recall}` | regression gate |
