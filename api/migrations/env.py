@@ -22,7 +22,10 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 # --- owners import their table modules here (see module docstring) ---
-import app.gateway.models  # noqa: F401  (gateway_log)
+import app.engine.models  # noqa: E402, F401  (chunks, claim_units, findings, review_cache)
+import app.gateway.models  # noqa: E402, F401  (gateway_log)
+import app.governance.models  # noqa: E402, F401  (proposals, spot_checks, eval_runs)
+import app.memory.models  # noqa: E402, F401  (edges)
 
 target_metadata = Base.metadata
 

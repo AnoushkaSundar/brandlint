@@ -1,14 +1,11 @@
 """alapan: engine, memory and governance tables
 
 Revision ID: alapan_0002_engine_tables
-Revises:
+Revises: alapan_0001_gateway_log
 Create Date: 2026-11-05
 
-NOTE: down_revision is None because this branch came off main, which has no
-migrations yet. The gateway_log migration (alapan_0001, on the gateway-stub
-branch) is a parallel root. Whichever of the two Alapan PRs merges second will
-re-chain this onto the other (or run `alembic merge heads`) so main keeps a
-single head — see CLAUDE.md.
+Chained onto alapan_0001 (gateway_log), which merged first, so main keeps a
+single Alembic head.
 """
 from __future__ import annotations
 
@@ -18,7 +15,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "alapan_0002_engine_tables"
-down_revision: str | None = None
+down_revision: str | None = "alapan_0001_gateway_log"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

@@ -11,9 +11,16 @@ is ``app.main:app``.
 from __future__ import annotations
 
 import importlib
+import os
 import pkgutil
 
 from fastapi import APIRouter, FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+# The browser calls the API cross-origin (web on :3000 -> api on :8000), so CORS
+# must be configured on the app. A router can't add middleware and main.py is
+# written once, so it lives here. Can't be "*" while credentials are allowed.
+WEB_ORIGIN = os.getenv("WEB_ORIGIN", "http://localhost:3000")
 
 
 def discover_routers() -> list[APIRouter]:
@@ -32,6 +39,14 @@ def discover_routers() -> list[APIRouter]:
 
 def create_app() -> FastAPI:
     application = FastAPI(title="BrandLint API", version="0.1")
+
+    application.add_middleware(
+        CORSMiddleware,
+        allow_origins=[WEB_ORIGIN],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
     @application.get("/health", tags=["meta"])
     def health() -> dict[str, str]:

@@ -1,0 +1,10 @@
+# Build context is the repo root (for the api image). Keep it lean.
+.git
+**/node_modules
+**/__pycache__
+**/*.pyc
+.venv
+web/.next
+.claude
+**/.pytest_cache
+**/.ruff_cache
