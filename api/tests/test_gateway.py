@@ -20,12 +20,16 @@ def session() -> Session:
         yield s
 
 
-def test_public_call_routes_to_proxy_and_logs(monkeypatch, session):
+def test_public_call_returns_parsed_output_and_logs(monkeypatch, session):
     captured = {}
 
     def fake_transport(body):
         captured["body"] = body
-        return {"model": "claude-haiku-5-5", "choices": [{"message": {"content": "{}"}}]}
+        # The model returns schema-shaped JSON as the message content.
+        return {
+            "model": "claude-haiku-5-5",
+            "choices": [{"message": {"content": '{"verdict": "PASS", "rule_id": "R1"}'}}],
+        }
 
     monkeypatch.setattr(llm, "_chat_completion", fake_transport)
 
@@ -38,14 +42,14 @@ def test_public_call_routes_to_proxy_and_logs(monkeypatch, session):
         review_id="rev1",
     )
 
-    assert out["model"] == "claude-haiku-5-5"
+    # Returns the parsed model output (contract/mock shape), not the raw envelope.
+    assert out == {"verdict": "PASS", "rule_id": "R1"}
+    assert "choices" not in out
     # deterministic + pinned
     assert captured["body"]["temperature"] == 0
     assert captured["body"]["model"] == "claude-haiku-5-5"
 
-    rows = session.query(GatewayLog).all()
-    assert len(rows) == 1
-    row = rows[0]
+    row = session.query(GatewayLog).one()
     assert row.route == "litellm"
     assert row.status == "ok"
     assert row.purpose == "classify"
@@ -67,6 +71,37 @@ def test_restricted_is_not_sent_out_and_logs_error(session):
     assert row.route == "ollama"
     assert row.status == "error"
     assert row.provider is None
+
+
+def test_confidential_is_refused_until_masking(monkeypatch, session):
+    # Confidential data must never reach the transport while masking is unbuilt.
+    def must_not_be_called(body):
+        raise AssertionError("confidential payload reached the proxy")
+
+    monkeypatch.setattr(llm, "_chat_completion", must_not_be_called)
+
+    with pytest.raises(NotImplementedError):
+        llm.call(
+            purpose="classify",
+            data_class="confidential",
+            rule_ids=["R1"],
+            payload={"messages": [{"role": "user", "content": "Bluewren"}]},
+            session=session,
+        )
+    row = session.query(GatewayLog).one()
+    assert row.route == "block"
+    assert row.status == "error"
+
+
+def test_session_is_required():
+    with pytest.raises((TypeError, ValueError)):
+        llm.call(
+            purpose="classify",
+            data_class="public",
+            rule_ids=[],
+            payload={"messages": []},
+            session=None,
+        )
 
 
 def test_transport_error_is_logged_and_raised(monkeypatch, session):
