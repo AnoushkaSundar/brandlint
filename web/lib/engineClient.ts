@@ -1,11 +1,15 @@
 import { apiFetch, apiUrl } from "@/lib/api";
-import type { Finding } from "@/lib/contracts";
+import type { DataClass, Finding } from "@/lib/contracts";
 
 export type Chunk = {
-  chunk_id: string;
+  id: string;
+  content_version_id: string;
   ordinal: number;
   kind: "heading" | "paragraph" | "image";
   text: string;
+  content_hash: string;
+  data_class: DataClass;
+  style?: Record<string, unknown> | null;
 };
 
 type StreamHandlers = {

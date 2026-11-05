@@ -25,10 +25,14 @@ const FINDINGS = demoJson<Finding[]>("findings", "agency-blog.json");
 const CHUNKS: Chunk[] = demoJson<{ chunk_id: string; text: string }[]>(
   "pieces",
   "agency-blog.chunks.json",
-).map((chunk, ordinal) => ({
-  ...chunk,
+).map(({ chunk_id, text }, ordinal) => ({
+  id: chunk_id,
+  content_version_id: "cv-demo-agency-blog-1",
   ordinal,
-  kind: chunk.chunk_id.endsWith("-h1") ? "heading" : "paragraph",
+  kind: chunk_id.endsWith("-h1") ? "heading" : "paragraph",
+  text,
+  content_hash: "hash",
+  data_class: "public",
 }));
 
 const CONTENT = {
@@ -179,7 +183,7 @@ test.describe("segmenting text", () => {
 });
 
 test.describe("sorting findings", () => {
-  const order = new Map(CHUNKS.map((chunk) => [chunk.chunk_id, chunk.ordinal]));
+  const order = new Map(CHUNKS.map((chunk) => [chunk.id, chunk.ordinal]));
 
   test("runs from critical to low", () => {
     const severities = sortFindings(FINDINGS, order).map((f) => f.severity);
@@ -371,7 +375,17 @@ test.describe("review screen", () => {
     const version = { ...CONTENT.versions[0], file_name: "banner.png" };
     await stubReview(page, {
       content: { ...CONTENT, versions: [version] },
-      chunks: [{ chunk_id: "banner-image", ordinal: 0, kind: "image", text: "" }],
+      chunks: [
+        {
+          id: "banner-image",
+          content_version_id: "v1",
+          ordinal: 0,
+          kind: "image",
+          text: "",
+          content_hash: "hash",
+          data_class: "public",
+        },
+      ],
       findings: [],
     });
     await page.goto("/content/c1/review");

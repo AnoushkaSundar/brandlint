@@ -75,7 +75,7 @@ export function ReviewDocument({
             // The file needs the session cookie, which next/image's optimiser lacks.
             // eslint-disable-next-line @next/next/no-img-element
             <img
-              key={chunk.chunk_id}
+              key={chunk.id}
               src={apiUrl(imagePath)}
               alt={imageAlt}
               className="rounded-md border"
@@ -85,7 +85,7 @@ export function ReviewDocument({
 
         const body = segmentText(
           chunk.text,
-          highlights.get(chunk.chunk_id) ?? [],
+          highlights.get(chunk.id) ?? [],
         ).map((segment) => (
           <Highlighted
             key={segment.start}
@@ -98,11 +98,11 @@ export function ReviewDocument({
         ));
 
         return chunk.kind === "heading" ? (
-          <h2 key={chunk.chunk_id} className="text-xl font-semibold">
+          <h2 key={chunk.id} className="text-xl font-semibold">
             {body}
           </h2>
         ) : (
-          <p key={chunk.chunk_id}>{body}</p>
+          <p key={chunk.id}>{body}</p>
         );
       })}
     </div>

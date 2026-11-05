@@ -179,7 +179,7 @@ export function ReviewScreen({ id }: { id: string }) {
     () =>
       sortFindings(
         received,
-        new Map(chunks.map((chunk) => [chunk.chunk_id, chunk.ordinal])),
+        new Map(chunks.map((chunk) => [chunk.id, chunk.ordinal])),
       ),
     [received, chunks],
   );
