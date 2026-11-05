@@ -32,6 +32,7 @@ class ContentVersion(Base):
     version: Mapped[int] = mapped_column(Integer)
     text: Mapped[str] = mapped_column(Text, default="")
     file_ref: Mapped[str | None] = mapped_column(String(512))
+    file_name: Mapped[str | None] = mapped_column(String(255))
     created_by: Mapped[str] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now

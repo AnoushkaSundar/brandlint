@@ -100,6 +100,24 @@ def post_review(body: ReviewRequest) -> dict:
     return start_review(body.channel)
 
 
+def _chunk_kind(chunk_id: str) -> str:
+    if chunk_id.endswith("-h1"):
+        return "heading"
+    return "image" if chunk_id.endswith("-image") else "paragraph"
+
+
+@router.get("/reviews/{review_id}/chunks")
+def list_chunks(review_id: str) -> list[dict]:
+    """Not in docs/contracts.md yet. The review screen needs it to place highlights."""
+    piece = data.piece_for_review(review_id)
+    if piece is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Review not found")
+    return [
+        {"chunk_id": chunk_id, "ordinal": ordinal, "kind": _chunk_kind(chunk_id), "text": text}
+        for ordinal, (chunk_id, text) in enumerate(data.chunks_for_piece(piece).items())
+    ]
+
+
 @router.get("/reviews/{review_id}/findings")
 def stream_findings(review_id: str) -> StreamingResponse:
     return _event_stream(_findings_for_review(review_id))
