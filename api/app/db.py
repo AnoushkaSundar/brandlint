@@ -10,8 +10,9 @@ from __future__ import annotations
 
 import os
 from collections.abc import Iterator
+from functools import lru_cache
 
-from sqlalchemy import create_engine
+from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 DATABASE_URL = os.getenv(
@@ -24,15 +25,23 @@ class Base(DeclarativeBase):
     """Shared declarative base for every table in the app."""
 
 
-engine = create_engine(DATABASE_URL, pool_pre_ping=True, future=True)
-SessionLocal = sessionmaker(
-    bind=engine, autoflush=False, expire_on_commit=False, class_=Session
-)
+@lru_cache(maxsize=1)
+def get_engine() -> Engine:
+    """Create the engine lazily, so importing this module never requires a live
+    DB or the psycopg driver (tests build their own engines)."""
+    return create_engine(DATABASE_URL, pool_pre_ping=True, future=True)
+
+
+@lru_cache(maxsize=1)
+def get_sessionmaker() -> sessionmaker[Session]:
+    return sessionmaker(
+        bind=get_engine(), autoflush=False, expire_on_commit=False, class_=Session
+    )
 
 
 def get_session() -> Iterator[Session]:
     """FastAPI dependency: commit on clean exit, roll back on error, always close."""
-    session = SessionLocal()
+    session = get_sessionmaker()()
     try:
         yield session
         session.commit()
