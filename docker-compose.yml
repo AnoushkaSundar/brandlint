@@ -1,4 +1,14 @@
-# Block 1 starting point. Alapan completes api/web/litellm/presidio services in blocks 1–2.
+# BrandLint local dev stack.
+#
+#   docker compose up --build            # core path: db, api, web, litellm, presidio
+#   docker compose --profile local-llm up   # + ollama  (restricted-data route)
+#   docker compose --profile graph up       # + neo4j   (graph view)
+#   docker compose --profile full up        # everything
+#
+# Heavier optional services (ollama, neo4j) sit behind profiles so the default
+# `up` stays light. All images are pinned to exact versions. LiteLLM is pinned
+# by digest as well and must stay hash-verified — NEVER use 1.82.7 or 1.82.8
+# (malicious releases, March 2026).
 services:
   db:
     image: pgvector/pgvector:pg16
@@ -8,10 +18,73 @@ services:
       POSTGRES_DB: brandlint
     ports: ["5432:5432"]
     volumes: ["pgdata:/var/lib/postgresql/data"]
-  # api:      FastAPI app (build: ./api), depends_on db
-  # web:      Next.js app (build: ./web)
-  # litellm:  LiteLLM proxy, image pinned to an exact version
-  # presidio-analyzer / presidio-anonymizer: mcr.microsoft.com/presidio-*
-  # ollama, neo4j: put behind compose profiles so the default `up` stays light
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U brandlint -d brandlint"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # FastAPI app. Dockerfile + app entrypoint land in block 2 (api skeleton).
+  api:
+    build: ./api
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: postgresql+psycopg://brandlint:brandlint@db:5432/brandlint
+      LITELLM_URL: http://litellm:4000
+      PRESIDIO_ANALYZER_URL: http://presidio-analyzer:3000
+      PRESIDIO_ANONYMIZER_URL: http://presidio-anonymizer:3000
+    ports: ["8000:8000"]
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # Next.js app (Anoushka owns ./web). Dockerfile lands with the web shell.
+  web:
+    build: ./web
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+    ports: ["3000:3000"]
+    depends_on: [api]
+
+  # LiteLLM proxy — the ONLY component that holds provider keys.
+  # Pinned by tag AND digest. Verify the digest before changing the version.
+  litellm:
+    image: ghcr.io/berriai/litellm:main-v1.66.0-stable@sha256:1ae3674b699ac5f4abfd55172359322270f35eaad9788e5ca02c0df9616623f2
+    env_file:
+      - path: .env
+        required: false
+    ports: ["4000:4000"]
+    # config (model list + keys via env) mounted in block 2.
+
+  presidio-analyzer:
+    image: mcr.microsoft.com/presidio-analyzer:2.2.362
+    ports: ["5002:3000"]
+
+  presidio-anonymizer:
+    image: mcr.microsoft.com/presidio-anonymizer:2.2.362
+    ports: ["5001:3000"]
+
+  # --- optional, profile-gated ---
+  ollama:
+    image: ollama/ollama:0.40.14
+    profiles: ["local-llm", "full"]
+    ports: ["11434:11434"]
+    volumes: ["ollama:/root/.ollama"]
+
+  neo4j:
+    image: neo4j:5.26.32-community
+    profiles: ["graph", "full"]
+    environment:
+      NEO4J_AUTH: neo4j/brandlint
+    ports: ["7474:7474", "7687:7687"]
+    volumes: ["neo4jdata:/data"]
+
 volumes:
   pgdata:
+  ollama:
+  neo4jdata:
