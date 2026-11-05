@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
 
 import { useAuth } from "@/components/auth-provider";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -165,9 +165,12 @@ export function ContentForm() {
           <Button type="submit" disabled={pending}>
             {pending ? "Saving…" : "Save draft"}
           </Button>
-          <Button variant="outline" render={<Link href="/content" />}>
+          <Link
+            href="/content"
+            className={buttonVariants({ variant: "outline" })}
+          >
             Cancel
-          </Button>
+          </Link>
         </div>
       </form>
     </div>

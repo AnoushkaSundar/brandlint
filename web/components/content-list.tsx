@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { useAuth } from "@/components/auth-provider";
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { ApiError } from "@/lib/api";
 import {
   channelLabel,
@@ -45,7 +45,9 @@ export function ContentList() {
           </p>
         </div>
         {canSubmit && (
-          <Button render={<Link href="/content/new" />}>New content</Button>
+          <Link href="/content/new" className={buttonVariants()}>
+            New content
+          </Link>
         )}
       </div>
 

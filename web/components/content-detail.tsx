@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { type FormEvent, useEffect, useState } from "react";
 
 import { useAuth } from "@/components/auth-provider";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -122,12 +122,12 @@ export function ContentDetail({ id }: { id: string }) {
         </h1>
         <div className="flex gap-2">
           {content.latest_review && (
-            <Button
-              variant="outline"
-              render={<Link href={`/content/${id}/review`} />}
+            <Link
+              href={`/content/${id}/review`}
+              className={buttonVariants({ variant: "outline" })}
             >
               Open review
-            </Button>
+            </Link>
           )}
           {canStartReview && !reviewIsCurrent && (
             <Button onClick={handleStartReview} disabled={pending}>
