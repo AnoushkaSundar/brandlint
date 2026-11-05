@@ -7,12 +7,12 @@ import json
 from pathlib import Path
 
 import pytest
-from app.auth.database import get_session
 from app.auth.dependencies import current_user
 from app.clients import engine as engine_client
 from app.clients import gateway as gateway_client
 from app.clients.router import build_router
 from app.clients.router import router as clients_router
+from app.db import get_session
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from mocks import data, engine, gateway, governance, memory
