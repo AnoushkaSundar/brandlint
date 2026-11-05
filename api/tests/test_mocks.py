@@ -4,7 +4,9 @@ the contract in docs/contracts.md and the behaviour table in the build brief.
 
 import asyncio
 import json
+import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from app.auth.dependencies import current_user
@@ -355,7 +357,9 @@ def test_clients_use_the_mocks_while_the_flags_are_on(monkeypatch):
     monkeypatch.delenv("USE_MOCK_GATEWAY", raising=False)
 
     assert engine_client.start_review("cv-1", "banner", 1) == "rev-demo-banner"
-    assert "rules" in gateway_client.llm_call("ingest", "internal", [], {})
+    result = gateway_client.llm_call("ingest", "internal", [], {}, session=None)
+
+    assert "rules" in result
 
 
 def test_the_engine_client_refuses_to_pretend_when_the_mock_is_off(monkeypatch):
@@ -363,3 +367,24 @@ def test_the_engine_client_refuses_to_pretend_when_the_mock_is_off(monkeypatch):
 
     with pytest.raises(NotImplementedError):
         engine_client.start_review("cv-1", "blog", 1)
+
+
+def test_the_gateway_client_gives_the_real_gateway_its_session(monkeypatch):
+    """The gateway only logs a call when it has a session, so one must reach it."""
+    received = {}
+
+    def fake_call(purpose, data_class, rule_ids, payload, **kwargs):
+        received.update(kwargs)
+        return {"ok": True}
+
+    monkeypatch.setenv("USE_MOCK_GATEWAY", "false")
+    monkeypatch.setitem(
+        sys.modules, "app.gateway.llm", SimpleNamespace(call=fake_call)
+    )
+    session = object()
+
+    gateway_client.llm_call(
+        "visual", "public", [], {}, session=session, review_id="review-1"
+    )
+
+    assert received == {"session": session, "review_id": "review-1"}
