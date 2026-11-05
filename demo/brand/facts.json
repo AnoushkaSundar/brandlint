@@ -1,0 +1,102 @@
+[
+  {
+    "id": "F-001",
+    "statement": "Tarnhollow Landing is used by 640 organisations.",
+    "value": "640",
+    "source_doc": "Q3 2026 Board Pack",
+    "owner": "Head of Revenue Operations",
+    "valid_until": "2027-01-31",
+    "data_class": "public",
+    "version": 1
+  },
+  {
+    "id": "F-002",
+    "statement": "Customers cut onboarding time by 38% on average.",
+    "value": "38%",
+    "source_doc": "2026 Customer Outcomes Study",
+    "owner": "Head of Customer Success",
+    "valid_until": "2027-06-30",
+    "data_class": "public",
+    "version": 1
+  },
+  {
+    "id": "F-003",
+    "statement": "92% of new hires finish their onboarding checklist within five days.",
+    "value": "92%",
+    "source_doc": "2024 Customer Outcomes Study",
+    "owner": "Head of Customer Success",
+    "valid_until": "2026-03-31",
+    "data_class": "public",
+    "version": 1
+  },
+  {
+    "id": "F-004",
+    "statement": "Tarnhollow Landing connects to 120 HR and payroll systems.",
+    "value": "120",
+    "source_doc": "Integrations Catalogue, May 2026",
+    "owner": "Head of Partnerships",
+    "valid_until": "2027-02-28",
+    "data_class": "public",
+    "version": 1
+  },
+  {
+    "id": "F-005",
+    "statement": "Customers rated Tarnhollow Landing 4.6 out of 5 in the 2025 HR Buyers Survey.",
+    "value": "4.6",
+    "source_doc": "2025 HR Buyers Survey",
+    "owner": "Head of Marketing",
+    "valid_until": "2026-06-30",
+    "data_class": "public",
+    "version": 1
+  },
+  {
+    "id": "F-006",
+    "statement": "Tarnhollow Landing had 99.95% uptime over the last 12 months.",
+    "value": "99.95%",
+    "source_doc": "Service Report Q3 2026",
+    "owner": "Head of Engineering",
+    "valid_until": "2027-01-15",
+    "data_class": "public",
+    "version": 1
+  },
+  {
+    "id": "F-007",
+    "statement": "Tarnhollow has held ISO 27001 certification since 2023.",
+    "value": "2023",
+    "source_doc": "ISO 27001 Certificate",
+    "owner": "Head of Security",
+    "valid_until": "2027-05-31",
+    "data_class": "public",
+    "version": 1
+  },
+  {
+    "id": "F-008",
+    "statement": "The median customer goes live in 21 days.",
+    "value": "21 days",
+    "source_doc": "Implementation Report Q3 2026",
+    "owner": "Head of Customer Success",
+    "valid_until": "2027-03-31",
+    "data_class": "internal",
+    "version": 1
+  },
+  {
+    "id": "F-009",
+    "statement": "Tarnhollow was founded in Bristol in 2017.",
+    "value": "2017",
+    "source_doc": "Company Register",
+    "owner": "Head of Communications",
+    "valid_until": null,
+    "data_class": "public",
+    "version": 1
+  },
+  {
+    "id": "F-010",
+    "statement": "Bluewren is the internal codename for the unreleased manager assistant, planned for Q2 2027.",
+    "value": "Bluewren",
+    "source_doc": "Product Roadmap 2027",
+    "owner": "Chief Product Officer",
+    "valid_until": "2027-06-30",
+    "data_class": "confidential",
+    "version": 1
+  }
+]

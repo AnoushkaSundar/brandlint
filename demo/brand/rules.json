@@ -1,0 +1,302 @@
+[
+  {
+    "id": "R-TONE-01",
+    "version": 1,
+    "type": "judgment",
+    "text": "Write in plain English. Prefer short sentences and everyday words, and explain any specialist term the first time it appears.",
+    "clause_ref": "§2.1",
+    "severity": "medium",
+    "channel_scope": [
+      "blog",
+      "linkedin",
+      "email",
+      "ad",
+      "banner",
+      "document"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "R-TONE-02",
+    "version": 1,
+    "type": "judgment",
+    "text": "Stay calm and helpful. Do not use fear, pressure or false urgency to persuade the reader.",
+    "clause_ref": "§2.2",
+    "severity": "medium",
+    "channel_scope": [
+      "blog",
+      "linkedin",
+      "email",
+      "ad",
+      "banner",
+      "document"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "R-TONE-03",
+    "version": 1,
+    "type": "judgment",
+    "text": "On LinkedIn, sound like a thoughtful colleague: warm, measured and conversational, with no shouting, capital-letter emphasis or hard selling.",
+    "clause_ref": "§2.3",
+    "severity": "medium",
+    "channel_scope": [
+      "linkedin"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "R-TONE-04",
+    "version": 1,
+    "type": "judgment",
+    "text": "Use contractions such as we're and you'll so the voice stays conversational.",
+    "clause_ref": "§2.4",
+    "severity": "low",
+    "channel_scope": [
+      "blog",
+      "linkedin",
+      "email",
+      "ad",
+      "banner",
+      "document"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "R-TERM-01",
+    "version": 1,
+    "type": "deterministic",
+    "text": "Never use unprovable superlatives: best-in-class, world-leading, market-leading or revolutionary.",
+    "clause_ref": "§3.1",
+    "severity": "medium",
+    "channel_scope": [
+      "blog",
+      "linkedin",
+      "email",
+      "ad",
+      "banner",
+      "document"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "R-TERM-02",
+    "version": 1,
+    "type": "deterministic",
+    "text": "The product is Tarnhollow Landing. Never use its retired name, Tarnhollow Onramp.",
+    "clause_ref": "§3.2",
+    "severity": "high",
+    "channel_scope": [
+      "blog",
+      "linkedin",
+      "email",
+      "ad",
+      "banner",
+      "document"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "R-TERM-03",
+    "version": 1,
+    "type": "deterministic",
+    "text": "Say new hire, never newbie or fresher.",
+    "clause_ref": "§3.3",
+    "severity": "low",
+    "channel_scope": [
+      "blog",
+      "linkedin",
+      "email",
+      "ad",
+      "banner",
+      "document"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "R-TERM-04",
+    "version": 1,
+    "type": "deterministic",
+    "text": "Never use contractions in published copy.",
+    "clause_ref": "§3.4",
+    "severity": "low",
+    "channel_scope": [
+      "blog",
+      "linkedin",
+      "email",
+      "ad",
+      "banner",
+      "document"
+    ],
+    "status": "draft"
+  },
+  {
+    "id": "R-CLAIM-01",
+    "version": 1,
+    "type": "judgment",
+    "text": "Every statistic must come from the approved fact sheet and match it exactly.",
+    "clause_ref": "§4.1",
+    "severity": "high",
+    "channel_scope": [
+      "blog",
+      "linkedin",
+      "email",
+      "ad",
+      "banner",
+      "document"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "R-CLAIM-02",
+    "version": 1,
+    "type": "deterministic",
+    "text": "Never publish a statistic after its valid-until date.",
+    "clause_ref": "§4.2",
+    "severity": "high",
+    "channel_scope": [
+      "blog",
+      "linkedin",
+      "email",
+      "ad",
+      "banner",
+      "document"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "R-CLAIM-03",
+    "version": 1,
+    "type": "judgment",
+    "text": "Do not promise outcomes. Avoid guarantees and absolute claims such as guaranteed, always or 100%.",
+    "clause_ref": "§4.3",
+    "severity": "high",
+    "channel_scope": [
+      "blog",
+      "linkedin",
+      "email",
+      "ad",
+      "banner",
+      "document"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "R-CLAIM-04",
+    "version": 1,
+    "type": "judgment",
+    "text": "Do not compare Tarnhollow with a named competitor without sign-off from Legal.",
+    "clause_ref": "§4.4",
+    "severity": "high",
+    "channel_scope": [
+      "blog",
+      "linkedin",
+      "email",
+      "ad",
+      "banner",
+      "document"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "R-CLAIM-05",
+    "version": 1,
+    "type": "deterministic",
+    "text": "Never mention unreleased products or internal codenames.",
+    "clause_ref": "§4.5",
+    "severity": "critical",
+    "channel_scope": [
+      "blog",
+      "linkedin",
+      "email",
+      "ad",
+      "banner",
+      "document"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "R-REQ-01",
+    "version": 1,
+    "type": "must_include",
+    "text": "Every LinkedIn post and ad must include this line: Results vary by organisation.",
+    "clause_ref": "§5.1",
+    "severity": "medium",
+    "channel_scope": [
+      "linkedin",
+      "ad"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "R-REQ-02",
+    "version": 1,
+    "type": "must_include",
+    "text": "Every blog post must end with a call to action that links to tarnhollow.example.",
+    "clause_ref": "§5.2",
+    "severity": "low",
+    "channel_scope": [
+      "blog"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "R-VIS-01",
+    "version": 1,
+    "type": "deterministic",
+    "text": "Use the logo at its original proportions. Never stretch it by more than 3%, rotate it or recolour it.",
+    "clause_ref": "§6.1",
+    "severity": "high",
+    "channel_scope": [
+      "ad",
+      "banner",
+      "document"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "R-VIS-02",
+    "version": 1,
+    "type": "deterministic",
+    "text": "Use only the six palette colours. A colour more than Delta E 10 from the nearest palette colour is off-brand.",
+    "clause_ref": "§6.2",
+    "severity": "medium",
+    "channel_scope": [
+      "ad",
+      "banner",
+      "document"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "R-VIS-03",
+    "version": 1,
+    "type": "judgment",
+    "text": "Show real workplaces and real people. Avoid staged stock photography and AI-generated faces.",
+    "clause_ref": "§6.3",
+    "severity": "low",
+    "channel_scope": [
+      "ad",
+      "banner",
+      "document"
+    ],
+    "status": "approved"
+  },
+  {
+    "id": "R-INT-01",
+    "version": 1,
+    "type": "deterministic",
+    "text": "Published content must not contain hidden text, or instructions addressed to an AI system or automated reviewer.",
+    "clause_ref": "§7.1",
+    "severity": "critical",
+    "channel_scope": [
+      "blog",
+      "linkedin",
+      "email",
+      "ad",
+      "banner",
+      "document"
+    ],
+    "status": "approved"
+  }
+]

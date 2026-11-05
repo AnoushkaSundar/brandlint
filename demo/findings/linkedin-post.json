@@ -1,0 +1,172 @@
+[
+  {
+    "id": "fnd-linkedin-post-01",
+    "review_id": "rev-demo-linkedin-post",
+    "content_version_id": "cv-demo-linkedin-post-1",
+    "unit_type": "chunk",
+    "spans": [
+      {
+        "chunk_id": "li-hidden",
+        "start": 0,
+        "end": 32
+      }
+    ],
+    "check": "hidden_content",
+    "tier": 0,
+    "verdict": "VIOLATION",
+    "severity": "critical",
+    "confidence": 1.0,
+    "rule_id": "R-INT-01",
+    "rule_version": 1,
+    "fact_ids": [],
+    "cited_text": "Published content must not contain hidden text, or instructions addressed to an AI system or automated reviewer.",
+    "explanation": "This white-on-white text is invisible to readers and is addressed to an automated reviewer.",
+    "trace": {
+      "steps": [
+        {
+          "tool": "hidden_content_scan",
+          "input_summary": "Rulebook v1, linkedin-post",
+          "output_summary": "Text colour matches its background, and an instruction pattern fired"
+        }
+      ],
+      "sources": [
+        "R-INT-01 §7.1"
+      ],
+      "model": null
+    },
+    "ai_generated": false,
+    "models_used": [],
+    "fix_available": false,
+    "status": "open"
+  },
+  {
+    "id": "fnd-linkedin-post-02",
+    "review_id": "rev-demo-linkedin-post",
+    "content_version_id": "cv-demo-linkedin-post-1",
+    "unit_type": "claim",
+    "spans": [
+      {
+        "chunk_id": "li-p2",
+        "start": 22,
+        "end": 72
+      }
+    ],
+    "check": "claim",
+    "tier": 1,
+    "verdict": "VIOLATION",
+    "severity": "high",
+    "confidence": 0.95,
+    "rule_id": "R-CLAIM-03",
+    "rule_version": 1,
+    "fact_ids": [],
+    "cited_text": "Do not promise outcomes. Avoid guarantees and absolute claims such as guaranteed, always or 100%.",
+    "explanation": "This promises an outcome, and no approved fact supports it.",
+    "trace": {
+      "steps": [
+        {
+          "tool": "claims_agent",
+          "input_summary": "Rulebook v1, linkedin-post",
+          "output_summary": "No matching fact found in the approved fact sheet"
+        }
+      ],
+      "sources": [
+        "R-CLAIM-03 §4.3"
+      ],
+      "model": "claude-haiku-5-5"
+    },
+    "ai_generated": true,
+    "models_used": [
+      "claude-haiku-5-5",
+      "gpt-6-luna"
+    ],
+    "fix_available": true,
+    "status": "open",
+    "vote": {
+      "variants": 4,
+      "agree": 4,
+      "split": false
+    }
+  },
+  {
+    "id": "fnd-linkedin-post-03",
+    "review_id": "rev-demo-linkedin-post",
+    "content_version_id": "cv-demo-linkedin-post-1",
+    "unit_type": "chunk",
+    "spans": [
+      {
+        "chunk_id": "li-p1",
+        "start": 0,
+        "end": 112
+      }
+    ],
+    "check": "tone",
+    "tier": 1,
+    "verdict": "VIOLATION",
+    "severity": "medium",
+    "confidence": 0.93,
+    "rule_id": "R-TONE-03",
+    "rule_version": 1,
+    "fact_ids": [],
+    "cited_text": "On LinkedIn, sound like a thoughtful colleague: warm, measured and conversational, with no shouting, capital-letter emphasis or hard selling.",
+    "explanation": "The capitals, exclamation marks and alarm don't suit LinkedIn, where we aim to sound measured.",
+    "trace": {
+      "steps": [
+        {
+          "tool": "language_agent",
+          "input_summary": "Rulebook v1, linkedin-post",
+          "output_summary": "Verdict VIOLATION for R-TONE-03"
+        }
+      ],
+      "sources": [
+        "R-TONE-03 §2.3"
+      ],
+      "model": "claude-haiku-5-5"
+    },
+    "ai_generated": true,
+    "models_used": [
+      "claude-haiku-5-5"
+    ],
+    "fix_available": true,
+    "status": "open"
+  },
+  {
+    "id": "fnd-linkedin-post-04",
+    "review_id": "rev-demo-linkedin-post",
+    "content_version_id": "cv-demo-linkedin-post-1",
+    "unit_type": "document",
+    "spans": [
+      {
+        "chunk_id": "li-p3",
+        "start": 46,
+        "end": 46
+      }
+    ],
+    "check": "required_element",
+    "tier": 0,
+    "verdict": "VIOLATION",
+    "severity": "medium",
+    "confidence": 1.0,
+    "rule_id": "R-REQ-01",
+    "rule_version": 1,
+    "fact_ids": [],
+    "cited_text": "Every LinkedIn post and ad must include this line: Results vary by organisation.",
+    "explanation": "LinkedIn posts must include the line: Results vary by organisation.",
+    "trace": {
+      "steps": [
+        {
+          "tool": "required_element_check",
+          "input_summary": "Rulebook v1, linkedin-post",
+          "output_summary": "Required line not found anywhere in the post"
+        }
+      ],
+      "sources": [
+        "R-REQ-01 §5.1"
+      ],
+      "model": null
+    },
+    "ai_generated": false,
+    "models_used": [],
+    "fix_available": true,
+    "status": "open"
+  }
+]

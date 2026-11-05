@@ -1,0 +1,35 @@
+[
+  {
+    "id": "A-001",
+    "kind": "logo",
+    "file_ref": "demo/brand/logo.svg",
+    "meta": {
+      "aspect_ratio": 1.3333,
+      "variant": "primary"
+    }
+  },
+  {
+    "id": "A-002",
+    "kind": "logo",
+    "file_ref": "demo/brand/logo.png",
+    "meta": {
+      "aspect_ratio": 1.3333,
+      "variant": "primary"
+    }
+  },
+  {
+    "id": "A-003",
+    "kind": "palette",
+    "file_ref": "demo/brand/palette.json",
+    "meta": {
+      "colours": [
+        "#12343B",
+        "#2D6A4F",
+        "#A7C957",
+        "#5F6F6B",
+        "#EEF2EF",
+        "#D9622B"
+      ]
+    }
+  }
+]
