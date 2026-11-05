@@ -21,8 +21,19 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# --- owners import their table modules here (see module docstring) ---
-import app.gateway.models  # noqa: F401  (gateway_log)
+# Import every owner's table modules so their tables register on Base.metadata
+# for --autogenerate. Referenced in _TABLES below so linters see them as used.
+import app.engine.models
+import app.gateway.models
+import app.governance.models
+import app.memory.models
+
+_TABLES = (
+    app.engine.models,
+    app.gateway.models,
+    app.governance.models,
+    app.memory.models,
+)
 
 target_metadata = Base.metadata
 

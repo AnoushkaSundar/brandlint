@@ -24,9 +24,13 @@ services:
       timeout: 3s
       retries: 10
 
-  # FastAPI app. Dockerfile + app entrypoint land in block 2 (api skeleton).
+  # FastAPI app (app.main:app). Build context is the repo root so the image can
+  # install requirements/ and copy api/. demo/ is mounted read-only for the mock
+  # endpoints (they read it via DEMO_DIR).
   api:
-    build: ./api
+    build:
+      context: .
+      dockerfile: api/Dockerfile
     env_file:
       - path: .env
         required: false
@@ -35,6 +39,10 @@ services:
       LITELLM_URL: http://litellm:4000
       PRESIDIO_ANALYZER_URL: http://presidio-analyzer:3000
       PRESIDIO_ANONYMIZER_URL: http://presidio-anonymizer:3000
+      WEB_ORIGIN: http://localhost:3000
+      DEMO_DIR: /demo
+    volumes:
+      - ./demo:/demo:ro
     ports: ["8000:8000"]
     depends_on:
       db:
