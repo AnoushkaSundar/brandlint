@@ -5,6 +5,7 @@ import json
 import os
 from collections import Counter
 from collections.abc import AsyncIterator
+from hashlib import sha256
 
 from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import StreamingResponse
@@ -108,12 +109,21 @@ def _chunk_kind(chunk_id: str) -> str:
 
 @router.get("/reviews/{review_id}/chunks")
 def list_chunks(review_id: str) -> list[dict]:
-    """Not in docs/contracts.md yet. The review screen needs it to place highlights."""
+    """Returns the contract's Chunk shape, which the review screen highlights from."""
     piece = data.piece_for_review(review_id)
     if piece is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Review not found")
     return [
-        {"chunk_id": chunk_id, "ordinal": ordinal, "kind": _chunk_kind(chunk_id), "text": text}
+        {
+            "id": chunk_id,
+            "content_version_id": f"cv-demo-{piece}-1",
+            "ordinal": ordinal,
+            "kind": _chunk_kind(chunk_id),
+            "text": text,
+            "content_hash": sha256(text.encode()).hexdigest(),
+            "data_class": "public",
+            "style": None,
+        }
         for ordinal, (chunk_id, text) in enumerate(data.chunks_for_piece(piece).items())
     ]
 
