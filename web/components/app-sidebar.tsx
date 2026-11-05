@@ -4,7 +4,7 @@ import { Check } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-import { useRole } from "@/components/role-provider";
+import { useAuth } from "@/components/auth-provider";
 import {
   Sidebar,
   SidebarContent,
@@ -21,7 +21,7 @@ import { isActivePath, navForRole } from "@/lib/navigation";
 
 export function AppSidebar() {
   const pathname = usePathname();
-  const { role } = useRole();
+  const { user } = useAuth();
   const { setOpenMobile } = useSidebar();
 
   // The mobile menu is a dialog, so it has to close after a link is followed.
@@ -47,7 +47,7 @@ export function AppSidebar() {
       </SidebarHeader>
       <SidebarContent>
         <nav aria-label="Main">
-          {navForRole(role).map((group) => (
+          {navForRole(user.role).map((group) => (
             <SidebarGroup key={group.label}>
               <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
               <SidebarGroupContent>

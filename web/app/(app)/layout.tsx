@@ -1,17 +1,17 @@
 import { AppSidebar } from "@/components/app-sidebar";
-import { RolePreview } from "@/components/role-preview";
-import { RoleProvider } from "@/components/role-provider";
+import { AuthProvider } from "@/components/auth-provider";
 import {
   SidebarInset,
   SidebarProvider,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { UserMenu } from "@/components/user-menu";
 
-// Signed-in shell. The route group keeps /login (block 2) outside it.
+// Signed-in shell. /login sits outside this route group.
 export default function AppLayout({ children }: LayoutProps<"/">) {
   return (
-    <RoleProvider>
+    <AuthProvider>
       <TooltipProvider>
         <a
           href="#main-content"
@@ -24,7 +24,7 @@ export default function AppLayout({ children }: LayoutProps<"/">) {
           <SidebarInset>
             <header className="flex h-14 shrink-0 items-center justify-between gap-2 border-b px-4">
               <SidebarTrigger />
-              <RolePreview />
+              <UserMenu />
             </header>
             <main
               id="main-content"
@@ -36,6 +36,6 @@ export default function AppLayout({ children }: LayoutProps<"/">) {
           </SidebarInset>
         </SidebarProvider>
       </TooltipProvider>
-    </RoleProvider>
+    </AuthProvider>
   );
 }
