@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
+import app.gateway
 import pytest
 from app.auth.dependencies import current_user
 from app.clients import engine as engine_client
@@ -378,9 +379,9 @@ def test_the_gateway_client_gives_the_real_gateway_its_session(monkeypatch):
         return {"ok": True}
 
     monkeypatch.setenv("USE_MOCK_GATEWAY", "false")
-    monkeypatch.setitem(
-        sys.modules, "app.gateway.llm", SimpleNamespace(call=fake_call)
-    )
+    fake_llm = SimpleNamespace(call=fake_call)
+    monkeypatch.setitem(sys.modules, "app.gateway.llm", fake_llm)
+    monkeypatch.setattr(app.gateway, "llm", fake_llm, raising=False)
     session = object()
 
     gateway_client.llm_call(
