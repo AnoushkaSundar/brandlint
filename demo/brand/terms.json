@@ -1,0 +1,39 @@
+[
+  {
+    "id": "T-001",
+    "preferred": "Tarnhollow Landing",
+    "banned": [
+      "Tarnhollow Onramp",
+      "Onramp"
+    ],
+    "renamed_from": "Tarnhollow Onramp"
+  },
+  {
+    "id": "T-002",
+    "preferred": "new hire",
+    "banned": [
+      "newbie",
+      "newbies",
+      "fresher",
+      "freshers"
+    ]
+  },
+  {
+    "id": "T-003",
+    "preferred": "trusted",
+    "banned": [
+      "best-in-class",
+      "world-leading",
+      "market-leading",
+      "revolutionary"
+    ]
+  },
+  {
+    "id": "T-004",
+    "preferred": "Tarnhollow",
+    "banned": [
+      "TarnHollow",
+      "Tarn Hollow"
+    ]
+  }
+]

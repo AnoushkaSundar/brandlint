@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 180" width="240" height="180" role="img" aria-label="Tarnhollow logo">
+  <polygon points="30,70 90,20 125,85" fill="#2D6A4F" stroke="#ffffff" stroke-width="3" stroke-linejoin="round"/>
+  <polygon points="90,20 170,15 125,85" fill="#12343B" stroke="#ffffff" stroke-width="3" stroke-linejoin="round"/>
+  <polygon points="170,15 225,75 125,85" fill="#A7C957" stroke="#ffffff" stroke-width="3" stroke-linejoin="round"/>
+  <polygon points="225,75 185,150 125,85" fill="#12343B" stroke="#ffffff" stroke-width="3" stroke-linejoin="round"/>
+  <polygon points="185,150 95,165 125,85" fill="#2D6A4F" stroke="#ffffff" stroke-width="3" stroke-linejoin="round"/>
+  <polygon points="95,165 25,120 125,85" fill="#D9622B" stroke="#ffffff" stroke-width="3" stroke-linejoin="round"/>
+  <polygon points="25,120 30,70 125,85" fill="#A7C957" stroke="#ffffff" stroke-width="3" stroke-linejoin="round"/>
+</svg>

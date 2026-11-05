@@ -1,0 +1,303 @@
+[
+  {
+    "id": "fnd-agency-blog-01",
+    "review_id": "rev-demo-agency-blog",
+    "content_version_id": "cv-demo-agency-blog-1",
+    "unit_type": "chunk",
+    "spans": [
+      {
+        "chunk_id": "blog-p2",
+        "start": 0,
+        "end": 17
+      }
+    ],
+    "check": "terminology",
+    "tier": 0,
+    "verdict": "VIOLATION",
+    "severity": "high",
+    "confidence": 1.0,
+    "rule_id": "R-TERM-02",
+    "rule_version": 1,
+    "fact_ids": [],
+    "cited_text": "The product is Tarnhollow Landing. Never use its retired name, Tarnhollow Onramp.",
+    "explanation": "This uses the product's retired name. It's now Tarnhollow Landing.",
+    "trace": {
+      "steps": [
+        {
+          "tool": "term_scan",
+          "input_summary": "Rulebook v1, agency-blog",
+          "output_summary": "Matched the renamed term \"Tarnhollow Onramp\""
+        }
+      ],
+      "sources": [
+        "R-TERM-02 §3.2"
+      ],
+      "model": null
+    },
+    "ai_generated": false,
+    "models_used": [],
+    "fix_available": true,
+    "status": "open"
+  },
+  {
+    "id": "fnd-agency-blog-02",
+    "review_id": "rev-demo-agency-blog",
+    "content_version_id": "cv-demo-agency-blog-1",
+    "unit_type": "chunk",
+    "spans": [
+      {
+        "chunk_id": "blog-p2",
+        "start": 125,
+        "end": 138
+      }
+    ],
+    "check": "terminology",
+    "tier": 0,
+    "verdict": "VIOLATION",
+    "severity": "medium",
+    "confidence": 1.0,
+    "rule_id": "R-TERM-01",
+    "rule_version": 1,
+    "fact_ids": [],
+    "cited_text": "Never use unprovable superlatives: best-in-class, world-leading, market-leading or revolutionary.",
+    "explanation": "This is a superlative we can't prove, and the guidelines ban it.",
+    "trace": {
+      "steps": [
+        {
+          "tool": "term_scan",
+          "input_summary": "Rulebook v1, agency-blog",
+          "output_summary": "Matched the banned term \"best-in-class\""
+        }
+      ],
+      "sources": [
+        "R-TERM-01 §3.1"
+      ],
+      "model": null
+    },
+    "ai_generated": false,
+    "models_used": [],
+    "fix_available": true,
+    "status": "open"
+  },
+  {
+    "id": "fnd-agency-blog-03",
+    "review_id": "rev-demo-agency-blog",
+    "content_version_id": "cv-demo-agency-blog-1",
+    "unit_type": "chunk",
+    "spans": [
+      {
+        "chunk_id": "blog-p1",
+        "start": 74,
+        "end": 81
+      }
+    ],
+    "check": "terminology",
+    "tier": 0,
+    "verdict": "VIOLATION",
+    "severity": "low",
+    "confidence": 1.0,
+    "rule_id": "R-TERM-03",
+    "rule_version": 1,
+    "fact_ids": [],
+    "cited_text": "Say new hire, never newbie or fresher.",
+    "explanation": "The guidelines say new hire rather than newbie.",
+    "trace": {
+      "steps": [
+        {
+          "tool": "term_scan",
+          "input_summary": "Rulebook v1, agency-blog",
+          "output_summary": "Matched the banned term \"newbies\""
+        }
+      ],
+      "sources": [
+        "R-TERM-03 §3.3"
+      ],
+      "model": null
+    },
+    "ai_generated": false,
+    "models_used": [],
+    "fix_available": true,
+    "status": "open"
+  },
+  {
+    "id": "fnd-agency-blog-04",
+    "review_id": "rev-demo-agency-blog",
+    "content_version_id": "cv-demo-agency-blog-1",
+    "unit_type": "chunk",
+    "spans": [
+      {
+        "chunk_id": "blog-p6",
+        "start": 43,
+        "end": 51
+      }
+    ],
+    "check": "terminology",
+    "tier": 0,
+    "verdict": "VIOLATION",
+    "severity": "critical",
+    "confidence": 1.0,
+    "rule_id": "R-CLAIM-05",
+    "rule_version": 1,
+    "fact_ids": [],
+    "cited_text": "Never mention unreleased products or internal codenames.",
+    "explanation": "This names an unreleased product by its internal codename.",
+    "trace": {
+      "steps": [
+        {
+          "tool": "confidential_term_scan",
+          "input_summary": "Rulebook v1, agency-blog",
+          "output_summary": "Matched a term from the confidential deny-list"
+        }
+      ],
+      "sources": [
+        "R-CLAIM-05 §4.5"
+      ],
+      "model": null
+    },
+    "ai_generated": false,
+    "models_used": [],
+    "fix_available": false,
+    "status": "open"
+  },
+  {
+    "id": "fnd-agency-blog-05",
+    "review_id": "rev-demo-agency-blog",
+    "content_version_id": "cv-demo-agency-blog-1",
+    "unit_type": "claim",
+    "spans": [
+      {
+        "chunk_id": "blog-p3",
+        "start": 42,
+        "end": 109
+      }
+    ],
+    "check": "claim",
+    "tier": 0,
+    "verdict": "VIOLATION",
+    "severity": "high",
+    "confidence": 1.0,
+    "rule_id": "R-CLAIM-02",
+    "rule_version": 1,
+    "fact_ids": [
+      "F-003"
+    ],
+    "cited_text": "92% of new hires finish their onboarding checklist within five days.",
+    "explanation": "This statistic passed its valid-until date on 31 March 2026.",
+    "trace": {
+      "steps": [
+        {
+          "tool": "fact_expiry_check",
+          "input_summary": "Rulebook v1, agency-blog",
+          "output_summary": "F-003 expired on 2026-03-31"
+        }
+      ],
+      "sources": [
+        "R-CLAIM-02 §4.2",
+        "F-003"
+      ],
+      "model": null
+    },
+    "ai_generated": false,
+    "models_used": [],
+    "fix_available": false,
+    "status": "open"
+  },
+  {
+    "id": "fnd-agency-blog-06",
+    "review_id": "rev-demo-agency-blog",
+    "content_version_id": "cv-demo-agency-blog-1",
+    "unit_type": "claim",
+    "spans": [
+      {
+        "chunk_id": "blog-p4",
+        "start": 86,
+        "end": 105
+      },
+      {
+        "chunk_id": "blog-p5",
+        "start": 22,
+        "end": 28
+      }
+    ],
+    "check": "claim",
+    "tier": 1,
+    "verdict": "VIOLATION",
+    "severity": "high",
+    "confidence": 0.97,
+    "rule_id": "R-CLAIM-01",
+    "rule_version": 1,
+    "fact_ids": [
+      "F-002"
+    ],
+    "cited_text": "Customers cut onboarding time by 38% on average.",
+    "explanation": "Read together, these two paragraphs claim an 80% cut in onboarding time. The approved figure is 38%.",
+    "trace": {
+      "steps": [
+        {
+          "tool": "claims_agent",
+          "input_summary": "Rulebook v1, agency-blog",
+          "output_summary": "Claim contradicts F-002: 80% stated, 38% approved"
+        }
+      ],
+      "sources": [
+        "R-CLAIM-01 §4.1",
+        "F-002"
+      ],
+      "model": "claude-haiku-5-5"
+    },
+    "ai_generated": true,
+    "models_used": [
+      "claude-haiku-5-5",
+      "gpt-6-luna"
+    ],
+    "fix_available": true,
+    "status": "open",
+    "vote": {
+      "variants": 4,
+      "agree": 4,
+      "split": false
+    }
+  },
+  {
+    "id": "fnd-agency-blog-07",
+    "review_id": "rev-demo-agency-blog",
+    "content_version_id": "cv-demo-agency-blog-1",
+    "unit_type": "chunk",
+    "spans": [
+      {
+        "chunk_id": "blog-p1",
+        "start": 135,
+        "end": 166
+      }
+    ],
+    "check": "tone",
+    "tier": 1,
+    "verdict": "UNSURE",
+    "severity": "medium",
+    "confidence": 0.52,
+    "rule_id": "R-TONE-02",
+    "rule_version": 1,
+    "fact_ids": [],
+    "cited_text": "Stay calm and helpful. Do not use fear, pressure or false urgency to persuade the reader.",
+    "explanation": "This may read as pressure on the reader, or it may just be describing a real risk. A reviewer should decide.",
+    "trace": {
+      "steps": [
+        {
+          "tool": "language_agent",
+          "input_summary": "Rulebook v1, agency-blog",
+          "output_summary": "No clear verdict, sent to a reviewer"
+        }
+      ],
+      "sources": [
+        "R-TONE-02 §2.2"
+      ],
+      "model": "claude-haiku-5-5"
+    },
+    "ai_generated": true,
+    "models_used": [
+      "claude-haiku-5-5"
+    ],
+    "fix_available": false,
+    "status": "open"
+  }
+]

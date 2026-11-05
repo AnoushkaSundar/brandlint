@@ -1,0 +1,32 @@
+[
+  {
+    "name": "Tarn Deep",
+    "hex": "#12343B",
+    "use": "Headlines and dark backgrounds"
+  },
+  {
+    "name": "Hollow Green",
+    "hex": "#2D6A4F",
+    "use": "Primary brand colour"
+  },
+  {
+    "name": "Lichen",
+    "hex": "#A7C957",
+    "use": "Highlights"
+  },
+  {
+    "name": "Slate",
+    "hex": "#5F6F6B",
+    "use": "Secondary text"
+  },
+  {
+    "name": "Mist",
+    "hex": "#EEF2EF",
+    "use": "Light backgrounds"
+  },
+  {
+    "name": "Ember",
+    "hex": "#D9622B",
+    "use": "Accents and calls to action"
+  }
+]

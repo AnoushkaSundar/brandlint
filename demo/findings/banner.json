@@ -1,0 +1,122 @@
+[
+  {
+    "id": "fnd-banner-01",
+    "review_id": "rev-demo-banner",
+    "content_version_id": "cv-demo-banner-1",
+    "unit_type": "chunk",
+    "spans": [
+      {
+        "chunk_id": "banner-image",
+        "start": 0,
+        "end": 0
+      }
+    ],
+    "check": "visual",
+    "tier": 0,
+    "verdict": "VIOLATION",
+    "severity": "high",
+    "confidence": 1.0,
+    "rule_id": "R-VIS-01",
+    "rule_version": 1,
+    "fact_ids": [],
+    "cited_text": "Use the logo at its original proportions. Never stretch it by more than 3%, rotate it or recolour it.",
+    "explanation": "The logo is stretched 50% wider than the approved file. The limit is 3%.",
+    "trace": {
+      "steps": [
+        {
+          "tool": "logo_check",
+          "input_summary": "Rulebook v1, banner",
+          "output_summary": "Matched the logo at 50% over its approved width"
+        }
+      ],
+      "sources": [
+        "R-VIS-01 §6.1"
+      ],
+      "model": null
+    },
+    "ai_generated": false,
+    "models_used": [],
+    "fix_available": false,
+    "status": "open"
+  },
+  {
+    "id": "fnd-banner-02",
+    "review_id": "rev-demo-banner",
+    "content_version_id": "cv-demo-banner-1",
+    "unit_type": "chunk",
+    "spans": [
+      {
+        "chunk_id": "banner-image",
+        "start": 0,
+        "end": 0
+      }
+    ],
+    "check": "visual",
+    "tier": 0,
+    "verdict": "VIOLATION",
+    "severity": "medium",
+    "confidence": 1.0,
+    "rule_id": "R-VIS-02",
+    "rule_version": 1,
+    "fact_ids": [],
+    "cited_text": "Use only the six palette colours. A colour more than Delta E 10 from the nearest palette colour is off-brand.",
+    "explanation": "#FF2EC4 isn't one of the six palette colours, and it's well past the Delta E 10 limit.",
+    "trace": {
+      "steps": [
+        {
+          "tool": "palette_check",
+          "input_summary": "Rulebook v1, banner",
+          "output_summary": "Dominant colour #FF2EC4 is outside the palette"
+        }
+      ],
+      "sources": [
+        "R-VIS-02 §6.2"
+      ],
+      "model": null
+    },
+    "ai_generated": false,
+    "models_used": [],
+    "fix_available": false,
+    "status": "open"
+  },
+  {
+    "id": "fnd-banner-03",
+    "review_id": "rev-demo-banner",
+    "content_version_id": "cv-demo-banner-1",
+    "unit_type": "chunk",
+    "spans": [
+      {
+        "chunk_id": "banner-ocr-1",
+        "start": 0,
+        "end": 27
+      }
+    ],
+    "check": "accessibility",
+    "tier": 0,
+    "verdict": "VIOLATION",
+    "severity": "medium",
+    "confidence": 1.0,
+    "rule_id": "WCAG-1.4.3",
+    "rule_version": null,
+    "fact_ids": [],
+    "cited_text": "The visual presentation of text and images of text has a contrast ratio of at least 4.5:1",
+    "explanation": "This headline has a contrast ratio of 2.1:1. Large text needs at least 3:1.",
+    "trace": {
+      "steps": [
+        {
+          "tool": "contrast_check",
+          "input_summary": "Rulebook v1, banner",
+          "output_summary": "#2D6A4F on #12343B is 2.1:1"
+        }
+      ],
+      "sources": [
+        "WCAG-1.4.3"
+      ],
+      "model": null
+    },
+    "ai_generated": false,
+    "models_used": [],
+    "fix_available": false,
+    "status": "open"
+  }
+]
