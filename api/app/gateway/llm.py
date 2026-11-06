@@ -31,6 +31,8 @@ PINNED_MODEL = os.getenv("LLM_MODEL", "claude-haiku-4-5")
 LITELLM_URL = os.getenv("LITELLM_URL", "http://localhost:4000")
 LITELLM_KEY = os.getenv("LITELLM_MASTER_KEY", "")
 TIMEOUT_S = float(os.getenv("LLM_TIMEOUT_S", "30"))
+# Part of the verdict cache key. Bump it when routing or masking rules change.
+POLICY_VERSION = "policy-1"
 
 
 def _route(data_class: DataClass) -> str:

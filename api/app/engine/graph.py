@@ -21,6 +21,7 @@ from app.contracts import Finding, Gap
 from app.engine import critic
 from app.engine.agents import language
 from app.engine.agents.language import ClassifyFn
+from app.engine.cache import VerdictCache
 from app.engine.checks import (
     SEC_CONFIDENTIAL,
     SEC_HIDDEN_CONTENT,
@@ -103,6 +104,7 @@ def build_review_graph(
     *,
     gap_sink: GapSink,
     model: str = PINNED_MODEL,
+    cache: VerdictCache | None = None,
 ) -> Any:
     def tier0(state: ReviewState) -> dict:
         found = run_tier0(state["chunks"], state["ctx"], state["fmt"])
@@ -116,6 +118,7 @@ def build_review_graph(
             classify,
             flagged=flagged_chunk_ids(chunks, ctx),
             model=model,
+            cache=cache,
         )
         return {"candidates": found}
 
@@ -159,12 +162,14 @@ def run_review(
     gap_sink: GapSink,
     model: str = PINNED_MODEL,
     on_finding: Callable[[Finding], None] | None = None,
+    cache: VerdictCache | None = None,
+    manifests: dict[str, dict] | None = None,
 ) -> tuple[list[Finding], list[Gap]]:
     """Runs the graph. `on_finding` gets each finding once, as soon as its track
     finishes, so code findings don't wait for the model. Tier 0 always goes first:
     a fast model's findings wait until the code checks have reported. Every one
     has passed the critic. The returned list is the final word."""
-    graph = build_review_graph(classify, gap_sink=gap_sink, model=model)
+    graph = build_review_graph(classify, gap_sink=gap_sink, model=model, cache=cache)
     known_facts = {fact.id for fact in ctx.facts}
     collected: list[Candidate] = []
     published: set[str] = set()
@@ -198,4 +203,6 @@ def run_review(
                 known_fact_ids=known_facts,
             )
             publish(ready)
+    if manifests is not None:
+        manifests.update({c.stable_id(): c.manifest for c in collected})
     return findings, gaps

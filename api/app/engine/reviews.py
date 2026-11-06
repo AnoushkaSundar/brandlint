@@ -25,6 +25,7 @@ from app.contracts import Chunk, ContentSource, Finding, Gap
 from app.db import get_sessionmaker
 from app.engine import graph, models
 from app.engine.brand import BrandData, load_brand
+from app.engine.cache import VerdictCache
 from app.engine.checks import CheckContext
 from app.engine.chunking import ParsedChunk, chunk_document
 from app.engine.parsers import parse
@@ -104,10 +105,20 @@ def _save_chunks(session_factory: SessionFactory, chunks: list[ParsedChunk]) -> 
         session.commit()
 
 
-def _save_findings(session_factory: SessionFactory, findings: list[Finding]) -> None:
+def _save_findings(
+    session_factory: SessionFactory,
+    findings: list[Finding],
+    base: dict,
+    manifests: dict[str, dict],
+) -> None:
     with session_factory() as session:
         for finding in findings:
-            session.merge(models.Finding(**finding.model_dump(mode="json")))
+            session.merge(
+                models.Finding(
+                    **finding.model_dump(mode="json"),
+                    manifest={**base, **manifests.get(finding.id, {})},
+                )
+            )
         session.commit()
 
 
@@ -141,6 +152,7 @@ def _execute(
             terms=brand.terms,
             as_of=date.today(),
         )
+        manifests: dict[str, dict] = {}
         findings, _ = graph.run_review(
             chunks,
             ctx,
@@ -148,8 +160,17 @@ def _execute(
             classify,
             gap_sink=gap_sink,
             on_finding=lambda f: run.add("finding", f.model_dump(mode="json")),
+            cache=VerdictCache(session_factory),
+            manifests=manifests,
         )
-        _save_findings(session_factory, findings)
+        base = {
+            "fmt": check_format,
+            "channel": channel,
+            "rulebook_version": rulebook_version,
+            "as_of": ctx.as_of.isoformat(),
+            "facts": [{"id": f.id, "version": f.version} for f in brand.facts],
+        }
+        _save_findings(session_factory, findings, base, manifests)
         run.finish("done", {"count": len(findings)})
     except Exception:
         logger.exception("review %s failed", run.review_id)

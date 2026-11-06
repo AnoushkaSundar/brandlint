@@ -17,7 +17,8 @@ from fastapi.responses import StreamingResponse
 from app.auth.dependencies import SessionDep, current_user
 from app.clients.flags import use_mock
 from app.contracts import Chunk
-from app.engine import reviews
+from app.db import get_sessionmaker
+from app.engine import graph, replay, reviews
 
 POLL_S = 0.05
 
@@ -67,6 +68,17 @@ def _review_routes() -> APIRouter:
         while run.chunks is None and not run.finished.is_set():
             await asyncio.sleep(POLL_S)
         return [chunk.as_dict() for chunk in run.chunks or []]
+
+    @routes.post("/verdicts/{finding_id}/replay")
+    def replay_verdict(finding_id: str, session: SessionDep) -> dict:
+        classify = graph.gateway_classify(get_sessionmaker())
+        try:
+            result = replay.replay(finding_id, session, classify)
+        except replay.NotReplayable as exc:
+            raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from None
+        if result is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Finding not found")
+        return result
 
     return routes
 

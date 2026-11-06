@@ -70,6 +70,8 @@ class Finding(Base):
     vote: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     fix_available: Mapped[bool] = mapped_column(Boolean, default=False)
     status: Mapped[str] = mapped_column(String, default="open")
+    # The inputs Replay needs: versions, rule, facts and the as-of date.
+    manifest: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
