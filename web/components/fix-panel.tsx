@@ -8,16 +8,15 @@ import { Textarea } from "@/components/ui/textarea";
 import { ApiError } from "@/lib/api";
 import type { Finding, FixSuggestion } from "@/lib/contracts";
 import { requestFix } from "@/lib/engineClient";
+import type { DecisionInput } from "@/lib/workflow";
 import { wordDiff } from "@/lib/wordDiff";
 
 const MAX_ATTEMPTS = 2;
 const NO_SAFE_FIX = "No safe fix found; marked for review";
 
-export type FixDecision = "accept_fix" | "edit_fix";
-
 type FixState =
   | { kind: "closed" }
-  | { kind: "loading" }
+  | { kind: "loading"; message: string }
   | { kind: "showing"; fix: FixSuggestion }
   | { kind: "editing"; fix: FixSuggestion; text: string }
   | { kind: "failed"; message: string; final: boolean };
@@ -56,12 +55,12 @@ export function FixPanel({
   onDecide,
 }: {
   finding: Finding;
-  onDecide: (action: FixDecision, text: string) => void;
+  onDecide: (input: DecisionInput) => Promise<void>;
 }) {
   const [state, setState] = useState<FixState>({ kind: "closed" });
 
   function suggest() {
-    setState({ kind: "loading" });
+    setState({ kind: "loading", message: "Writing a fix…" });
     requestFix(finding.id).then(
       (fix) => setState({ kind: "showing", fix }),
       (caught: ApiError) =>
@@ -75,6 +74,13 @@ export function FixPanel({
 
   const close = () => setState({ kind: "closed" });
 
+  function save(action: "accept_fix" | "edit_fix", text: string) {
+    setState({ kind: "loading", message: "Saving…" });
+    onDecide({ action, fix_text: text }).catch((caught: ApiError) =>
+      setState({ kind: "failed", message: caught.message, final: false }),
+    );
+  }
+
   if (state.kind === "closed") {
     return (
       <Button type="button" variant="outline" size="sm" onClick={suggest}>
@@ -86,7 +92,7 @@ export function FixPanel({
   if (state.kind === "loading") {
     return (
       <p role="status" className="text-muted-foreground">
-        Writing a fix…
+        {state.message}
       </p>
     );
   }
@@ -123,7 +129,7 @@ export function FixPanel({
             type="button"
             size="sm"
             disabled={!state.text.trim()}
-            onClick={() => onDecide("edit_fix", state.text.trim())}
+            onClick={() => save("edit_fix", state.text.trim())}
           >
             Save edit
           </Button>
@@ -151,7 +157,7 @@ export function FixPanel({
         <Button
           type="button"
           size="sm"
-          onClick={() => onDecide("accept_fix", fix.suggested)}
+          onClick={() => save("accept_fix", fix.suggested)}
         >
           Accept
         </Button>

@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 
-import { FixPanel, type FixDecision } from "@/components/fix-panel";
+import { DecisionActions } from "@/components/decision-actions";
+import { FixPanel } from "@/components/fix-panel";
 import { SEVERITY_MARK } from "@/components/review-document";
 import { Button } from "@/components/ui/button";
 import { ApiError } from "@/lib/api";
@@ -18,13 +19,10 @@ import {
   modelLabel,
   SEVERITY_LABELS,
   sourceLabel,
+  STATUS_LABELS,
 } from "@/lib/findingLabels";
 import { cn } from "@/lib/utils";
-
-const FIX_OUTCOMES = {
-  accept_fix: "Fix accepted",
-  edit_fix: "Edited fix saved",
-} as const;
+import type { DecisionInput, FindingStanding } from "@/lib/workflow";
 
 const MANIFEST_LABELS: Record<string, string> = {
   rule_id: "Rule",
@@ -169,19 +167,22 @@ export function FindingCard({
   finding,
   selected,
   clauseRefs,
-  decision,
+  standing,
   onSelect,
   onDecide,
 }: {
   finding: Finding;
   selected: boolean;
   clauseRefs: ReadonlyMap<string, string>;
-  decision: FixDecision | undefined;
+  standing: FindingStanding | undefined;
   onSelect: (findingId: string) => void;
-  onDecide: (findingId: string, action: FixDecision, text: string) => void;
+  onDecide: (findingId: string, input: DecisionInput) => Promise<void>;
 }) {
   const confidence = confidenceLabel(finding);
   const source = sourceLabel(finding, clauseRefs);
+  const allowed = standing?.allowed ?? [];
+  const outcome = standing ? STATUS_LABELS[standing.status] : null;
+  const decideThis = (input: DecisionInput) => onDecide(finding.id, input);
 
   return (
     <article
@@ -236,18 +237,11 @@ export function FindingCard({
       <Precedents findingId={finding.id} />
 
       <div className="flex flex-wrap items-center gap-2">
-        {decision ? (
-          <p role="status" className="font-medium">
-            {FIX_OUTCOMES[decision]}
-          </p>
-        ) : (
-          finding.fix_available && (
-            <FixPanel
-              finding={finding}
-              onDecide={(action, text) => onDecide(finding.id, action, text)}
-            />
-          )
+        {outcome && <p className="w-full font-medium">{outcome}</p>}
+        {allowed.includes("accept_fix") && finding.fix_available && (
+          <FixPanel finding={finding} onDecide={decideThis} />
         )}
+        <DecisionActions allowed={allowed} onDecide={decideThis} />
         <Replay findingId={finding.id} />
       </div>
 

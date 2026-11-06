@@ -4,7 +4,11 @@ import { join } from "node:path";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page, test } from "@playwright/test";
 
-import { type Chunk, type Finding } from "../lib/contracts";
+import {
+  type Chunk,
+  type DecisionAction,
+  type Finding,
+} from "../lib/contracts";
 import { trackProgress } from "../lib/findingLabels";
 import {
   type Highlight,
@@ -13,6 +17,7 @@ import {
   sortFindings,
 } from "../lib/highlights";
 import { wordDiff } from "../lib/wordDiff";
+import { type Board } from "../lib/workflow";
 
 const WCAG_22_AA = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"];
 const DEMO = join(__dirname, "..", "..", "demo");
@@ -81,10 +86,89 @@ const RULES = demoJson<{ id: string; clause_ref: string }[]>(
   "rules.json",
 );
 
+function creatorActions(finding: Finding): DecisionAction[] {
+  if (finding.verdict !== "VIOLATION") return [];
+  const fixes: DecisionAction[] = finding.fix_available
+    ? ["accept_fix", "edit_fix"]
+    : [];
+  return ["low", "medium"].includes(finding.severity)
+    ? [...fixes, "override"]
+    : fixes;
+}
+
+function boardFor(findings: readonly Finding[] = FINDINGS): Board {
+  return {
+    state: "resolving",
+    legal_required: false,
+    findings: findings.map((finding) => ({
+      id: finding.id,
+      status: "open",
+      fix_text: null,
+      allowed: creatorActions(finding),
+    })),
+    moves: [],
+  };
+}
+
+const STATUS_AFTER = {
+  accept_fix: "fix_accepted",
+  edit_fix: "fix_edited",
+  override: "override_pending",
+  confirm_override: "override_confirmed",
+  reject_override: "override_rejected",
+  resolve: "resolved",
+} as const;
+
+type Posted = {
+  findingId: string;
+  action: DecisionAction;
+  reason?: string;
+  fix_text?: string;
+};
+
+/** Serves the board and applies decisions to it, recording what was sent. */
+async function stubBoard(page: Page, start: Board = boardFor()) {
+  let board = start;
+  const decisions: Posted[] = [];
+  const moves: { to: string; reason?: string }[] = [];
+
+  await page.route("**/stub-api/workflow/content/c1/board", (route) =>
+    route.fulfill({ json: board }),
+  );
+  await page.route(
+    "**/stub-api/workflow/content/c1/findings/*/decisions",
+    (route) => {
+      const findingId = decodeURIComponent(
+        route.request().url().split("/findings/")[1].split("/")[0],
+      );
+      const body = route.request().postDataJSON();
+      decisions.push({ findingId, ...body });
+      const action = body.action as DecisionAction;
+      board = {
+        ...board,
+        findings: board.findings.map((item) =>
+          item.id === findingId
+            ? { ...item, status: STATUS_AFTER[action], allowed: [] }
+            : item,
+        ),
+      };
+      return route.fulfill({ status: 201, json: board });
+    },
+  );
+  await page.route("**/stub-api/workflow/content/c1/transitions", (route) => {
+    const body = route.request().postDataJSON();
+    moves.push(body);
+    board = { ...board, state: body.to, moves: [] };
+    return route.fulfill({ json: board });
+  });
+  return { decisions, moves };
+}
+
 async function stubReview(
   page: Page,
   { content = CONTENT as unknown, chunks = CHUNKS, findings = FINDINGS } = {},
 ) {
+  await stubBoard(page, boardFor(findings));
   await page.route("**/stub-api/admin/rulebook*", (route) =>
     route.fulfill({ json: RULES }),
   );
@@ -805,8 +889,9 @@ test.describe("suggesting a fix", () => {
     await expect(card(page, "retired name")).not.toContainText("Fix accepted");
   });
 
-  test("accepting records it and ends the offer", async ({ page }) => {
+  test("accepting saves it and ends the offer", async ({ page }) => {
     await stubReview(page);
+    const { decisions } = await stubBoard(page);
     await stubFixes(page, [{ json: fixFor(1) }]);
     await page.goto("/content/c1/review");
 
@@ -817,12 +902,20 @@ test.describe("suggesting a fix", () => {
 
     await expect(card(page, "retired name")).toContainText("Fix accepted");
     await expect(suggestFix(page)).toHaveCount(0);
+    expect(decisions).toEqual([
+      {
+        findingId: BASE.id,
+        action: "accept_fix",
+        fix_text: "Tarnhollow Landing",
+      },
+    ]);
   });
 
   test("editing starts from the suggestion and needs some text", async ({
     page,
   }) => {
     await stubReview(page);
+    const { decisions } = await stubBoard(page);
     await stubFixes(page, [{ json: fixFor(1) }]);
     await page.goto("/content/c1/review");
 
@@ -840,6 +933,10 @@ test.describe("suggesting a fix", () => {
     await found.getByRole("button", { name: "Save edit" }).click();
 
     await expect(found).toContainText("Edited fix saved");
+    expect(decisions[0]).toMatchObject({
+      action: "edit_fix",
+      fix_text: "The Tarnhollow Landing app",
+    });
   });
 
   test("going back from editing keeps the suggestion", async ({ page }) => {
@@ -982,6 +1079,318 @@ test.describe("replaying a verdict", () => {
   });
 });
 
+test.describe("deciding on a finding", () => {
+  const low = () => FINDINGS.find((item) => item.severity === "low") as Finding;
+  const unsure = () =>
+    FINDINGS.find((item) => item.verdict === "UNSURE") as Finding;
+
+  function reviewerBoard(status: "open" | "override_pending"): Board {
+    const board = boardFor();
+    return {
+      ...board,
+      findings: board.findings.map((item) => {
+        if (item.id === low().id && status === "override_pending") {
+          return {
+            ...item,
+            status,
+            allowed: ["confirm_override", "reject_override"],
+          };
+        }
+        if (item.id === unsure().id) return { ...item, allowed: ["resolve"] };
+        return { ...item, allowed: [] };
+      }),
+    };
+  }
+
+  test("a creator can only override what the server allows", async ({
+    page,
+  }) => {
+    await stubReview(page);
+    await page.goto("/content/c1/review");
+
+    await expect(
+      card(page, low().explanation).getByRole("button", { name: "Override" }),
+    ).toBeVisible();
+    await expect(
+      card(page, "retired name").getByRole("button", { name: "Override" }),
+    ).toHaveCount(0);
+    await expect(
+      card(page, "Bluewren").getByRole("button", { name: "Override" }),
+    ).toHaveCount(0);
+  });
+
+  test("no fix is offered unless the server allows it", async ({ page }) => {
+    await stubReview(page);
+    await stubBoard(page, {
+      ...boardFor(),
+      findings: boardFor().findings.map((item) => ({ ...item, allowed: [] })),
+    });
+    await page.goto("/content/c1/review");
+    await expect(page.getByRole("region", { name: "Workflow" })).toBeVisible();
+
+    await expect(page.getByRole("button", { name: "Suggest fix" })).toHaveCount(
+      0,
+    );
+  });
+
+  test("an override needs a reason and then waits for a reviewer", async ({
+    page,
+  }) => {
+    await stubReview(page);
+    const { decisions } = await stubBoard(page);
+    await page.goto("/content/c1/review");
+
+    const found = card(page, low().explanation);
+    await found.getByRole("button", { name: "Override" }).click();
+
+    const submit = found.getByRole("button", { name: "Submit override" });
+    await expect(submit).toBeDisabled();
+
+    await found.getByLabel("Why should this be overridden?").fill("A quote");
+    await submit.click();
+
+    await expect(found).toContainText("Override waiting for a reviewer");
+    expect(decisions).toEqual([
+      { findingId: low().id, action: "override", reason: "A quote" },
+    ]);
+  });
+
+  test("cancelling an override sends nothing", async ({ page }) => {
+    await stubReview(page);
+    const { decisions } = await stubBoard(page);
+    await page.goto("/content/c1/review");
+
+    const found = card(page, low().explanation);
+    await found.getByRole("button", { name: "Override" }).click();
+    await found.getByRole("button", { name: "Cancel" }).click();
+
+    await expect(found.getByRole("button", { name: "Override" })).toBeVisible();
+    expect(decisions).toEqual([]);
+  });
+
+  test("a refused decision shows why and keeps the reason", async ({ page }) => {
+    await stubReview(page);
+    await page.route(
+      "**/stub-api/workflow/content/c1/findings/*/decisions",
+      (route) =>
+        route.fulfill({
+          status: 403,
+          json: { detail: "You can't do that to this finding." },
+        }),
+    );
+    await page.goto("/content/c1/review");
+
+    const found = card(page, low().explanation);
+    await found.getByRole("button", { name: "Override" }).click();
+    const field = found.getByLabel("Why should this be overridden?");
+    await field.fill("A quote");
+    await found.getByRole("button", { name: "Submit override" }).click();
+
+    await expect(found.getByRole("alert")).toHaveText(
+      "You can't do that to this finding.",
+    );
+    await expect(field).toHaveValue("A quote");
+  });
+
+  test("a refused fix shows why", async ({ page }) => {
+    await stubReview(page);
+    await page.route(
+      "**/stub-api/workflow/content/c1/findings/*/decisions",
+      (route) =>
+        route.fulfill({ status: 403, json: { detail: "Not any more." } }),
+    );
+    await stubFixes(page, [{ json: fixFor(1) }]);
+    await page.goto("/content/c1/review");
+
+    const found = card(page, "retired name");
+    await found.getByRole("button", { name: "Suggest fix" }).click();
+    await found.getByRole("button", { name: "Accept" }).click();
+
+    await expect(found.getByRole("alert")).toHaveText("Not any more.");
+  });
+
+  test("a reviewer confirms a pending override", async ({ page }) => {
+    await stubReview(page);
+    const { decisions } = await stubBoard(page, reviewerBoard("override_pending"));
+    await page.goto("/content/c1/review");
+
+    const found = card(page, low().explanation);
+    await expect(found).toContainText("Override waiting for a reviewer");
+    await found.getByRole("button", { name: "Confirm override" }).click();
+
+    await expect(found).toContainText("Override confirmed");
+    expect(decisions[0]).toMatchObject({ action: "confirm_override" });
+  });
+
+  test("a reviewer rejects an override with a reason", async ({ page }) => {
+    await stubReview(page);
+    const { decisions } = await stubBoard(page, reviewerBoard("override_pending"));
+    await page.goto("/content/c1/review");
+
+    const found = card(page, low().explanation);
+    await found.getByRole("button", { name: "Reject override" }).click();
+    await found.getByLabel("Why is this override rejected?").fill("Not a quote");
+    await found.getByRole("button", { name: "Reject", exact: true }).click();
+
+    await expect(found).toContainText("Override rejected");
+    expect(decisions[0]).toMatchObject({
+      action: "reject_override",
+      reason: "Not a quote",
+    });
+  });
+
+  test("a reviewer resolves an UNSURE finding with a reason", async ({
+    page,
+  }) => {
+    await stubReview(page);
+    const { decisions } = await stubBoard(page, reviewerBoard("open"));
+    await page.goto("/content/c1/review");
+
+    const found = card(page, unsure().explanation);
+    await found.getByRole("button", { name: "Resolve" }).click();
+    await found.getByLabel("How was this settled?").fill("Fine in context");
+    await found.getByRole("button", { name: "Mark resolved" }).click();
+
+    await expect(found).toContainText("Resolved");
+    expect(decisions[0]).toMatchObject({
+      action: "resolve",
+      reason: "Fine in context",
+    });
+  });
+
+  test("a settled finding loses its highlight", async ({ page }) => {
+    await stubReview(page);
+    await stubFixes(page, [{ json: fixFor(1) }]);
+    await page.goto("/content/c1/review");
+    await expect(highlight(page, "Tarnhollow Onramp")).toBeVisible();
+
+    const found = card(page, "retired name");
+    await found.getByRole("button", { name: "Suggest fix" }).click();
+    await found.getByRole("button", { name: "Accept" }).click();
+
+    await expect(found).toContainText("Fix accepted");
+    await expect(highlight(page, "Tarnhollow Onramp")).toHaveCount(0);
+  });
+});
+
+test.describe("moving content through the workflow", () => {
+  const bar = (page: Page) => page.getByRole("region", { name: "Workflow" });
+
+  test("shows the status and why a move is blocked", async ({ page }) => {
+    await stubReview(page);
+    await stubBoard(page, {
+      ...boardFor(),
+      moves: [
+        {
+          to: "reviewer_check",
+          needs_reason: false,
+          blocked_by: "7 findings still open",
+        },
+      ],
+    });
+    await page.goto("/content/c1/review");
+
+    await expect(bar(page)).toContainText("Status: Resolving");
+    await expect(
+      bar(page).getByRole("button", { name: "Submit for review" }),
+    ).toBeDisabled();
+    await expect(bar(page)).toContainText("7 findings still open");
+  });
+
+  test("makes a move and shows the new status", async ({ page }) => {
+    await stubReview(page);
+    const { moves } = await stubBoard(page, {
+      ...boardFor(),
+      moves: [{ to: "reviewer_check", needs_reason: false, blocked_by: null }],
+    });
+    await page.goto("/content/c1/review");
+
+    await bar(page).getByRole("button", { name: "Submit for review" }).click();
+
+    await expect(bar(page)).toContainText("Status: Reviewer check");
+    expect(moves).toHaveLength(1);
+    expect(moves[0].to).toBe("reviewer_check");
+  });
+
+  test("asks for a reason where one is needed", async ({ page }) => {
+    await stubReview(page);
+    const { moves } = await stubBoard(page, {
+      ...boardFor(),
+      moves: [{ to: "rejected", needs_reason: true, blocked_by: null }],
+    });
+    await page.goto("/content/c1/review");
+
+    await bar(page).getByRole("button", { name: "Reject" }).click();
+    expect(moves).toEqual([]);
+
+    await bar(page).getByLabel("Why: reject?").fill("Off brand");
+    await bar(page).getByRole("button", { name: "Reject" }).click();
+
+    await expect(bar(page)).toContainText("Status: Rejected");
+    expect(moves[0]).toMatchObject({ to: "rejected", reason: "Off brand" });
+  });
+
+  test("a refused move shows why", async ({ page }) => {
+    await stubReview(page);
+    await stubBoard(page, {
+      ...boardFor(),
+      moves: [{ to: "published", needs_reason: false, blocked_by: null }],
+    });
+    await page.route("**/stub-api/workflow/content/c1/transitions", (route) =>
+      route.fulfill({
+        status: 409,
+        json: { detail: "A high-severity claim needs legal sign-off first" },
+      }),
+    );
+    await page.goto("/content/c1/review");
+
+    await bar(page).getByRole("button", { name: "Publish" }).click();
+
+    await expect(bar(page).getByRole("alert")).toContainText("legal sign-off");
+  });
+
+  test("says when legal must sign off", async ({ page }) => {
+    await stubReview(page);
+    await stubBoard(page, { ...boardFor(), legal_required: true });
+    await page.goto("/content/c1/review");
+
+    await expect(bar(page)).toContainText("legal must sign this off");
+  });
+
+  test("leaves AI review by itself when the stream ends", async ({ page }) => {
+    await stubReview(page);
+    const { moves } = await stubBoard(page, {
+      ...boardFor(),
+      state: "ai_review",
+      moves: [{ to: "resolving", needs_reason: false, blocked_by: null }],
+    });
+    await page.goto("/content/c1/review");
+
+    await expect(bar(page)).toContainText("Status: Resolving");
+    expect(moves).toHaveLength(1);
+    expect(moves[0].to).toBe("resolving");
+  });
+
+  test("offers no moves on finished content", async ({ page }) => {
+    await stubReview(page);
+    await stubBoard(page, { ...boardFor(), state: "published" });
+    await page.goto("/content/c1/review");
+
+    await expect(bar(page)).toContainText("Status: Published");
+    await expect(bar(page).getByRole("button")).toHaveCount(0);
+  });
+
+  test("a board that won't load says so", async ({ page }) => {
+    await stubReview(page);
+    await page.route("**/stub-api/workflow/content/c1/board", (route) =>
+      route.fulfill({ status: 500, json: {} }),
+    );
+    await page.goto("/content/c1/review");
+
+    await expect(page.locator("main").getByRole("alert").first()).toBeVisible();
+  });
+});
+
 test.describe("mobile", () => {
   test.use({ viewport: { width: 390, height: 844 } });
 
@@ -1021,6 +1430,24 @@ test.describe("accessibility (WCAG 2.2 AA)", () => {
     await found.getByText("Why was this flagged?").click();
     await expect(found.locator("ins")).toBeVisible();
     await expect(found.getByRole("status")).toBeVisible();
+
+    await expectNoAccessibilityViolations(page);
+  });
+
+  test("open reason forms have no violations", async ({ page }) => {
+    await stubReview(page);
+    await stubBoard(page, {
+      ...boardFor(),
+      moves: [{ to: "rejected", needs_reason: true, blocked_by: null }],
+    });
+    await page.goto("/content/c1/review");
+
+    const low = findingCards(page)
+      .filter({ has: page.getByRole("button", { name: "Override" }) })
+      .first();
+    await low.getByRole("button", { name: "Override" }).click();
+    await page.getByRole("button", { name: "Reject" }).click();
+    await expect(page.getByLabel("Why: reject?")).toBeVisible();
 
     await expectNoAccessibilityViolations(page);
   });
