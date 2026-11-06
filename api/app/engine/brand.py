@@ -1,17 +1,18 @@
-"""Brand data for a review: the pinned rulebook, facts and terms.
+"""Brand data for a review, read through the product's admin functions.
 
-Reads the demo brand until the product's admin functions exist, then this one
-function changes. Only approved rules ever reach a review.
+`rulebook_at` raises if the pinned rulebook has no approved rules, so a review
+can never run against an empty rulebook and look clean.
 """
 
 from __future__ import annotations
 
-import json
-import os
 from dataclasses import dataclass
-from pathlib import Path
 
-from app.contracts import Fact, Rule, RuleStatus, Term
+from sqlalchemy.orm import Session
+
+from app.admin.brand import list_facts, list_terms
+from app.admin.rulebook import rulebook_at
+from app.contracts import Fact, Rule, Term
 
 
 @dataclass
@@ -21,23 +22,9 @@ class BrandData:
     terms: list[Term]
 
 
-def _demo_dir() -> Path:
-    configured = os.getenv("DEMO_DIR")
-    return Path(configured) if configured else Path(__file__).parents[3] / "demo"
-
-
-def _load(name: str) -> list[dict]:
-    return json.loads((_demo_dir() / "brand" / name).read_text("utf8"))
-
-
-def load_brand(rulebook_version: int) -> BrandData:
-    rules = [Rule(**row) for row in _load("rules.json")]
+def load_brand(session: Session, rulebook_version: int) -> BrandData:
     return BrandData(
-        rules=[
-            rule
-            for rule in rules
-            if rule.status == RuleStatus.approved and rule.version <= rulebook_version
-        ],
-        facts=[Fact(**row) for row in _load("facts.json")],
-        terms=[Term(**row) for row in _load("terms.json")],
+        rules=rulebook_at(session, rulebook_version),
+        facts=list_facts(session),
+        terms=list_terms(session),
     )

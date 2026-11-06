@@ -41,8 +41,10 @@ services:
       PRESIDIO_ANONYMIZER_URL: http://presidio-anonymizer:3000
       WEB_ORIGIN: http://localhost:3000
       DEMO_DIR: /demo
+      UPLOAD_DIR: /uploads
     volumes:
       - ./demo:/demo:ro
+      - uploads:/uploads
     ports: ["8000:8000"]
     depends_on:
       db:
@@ -106,3 +108,4 @@ volumes:
   pgdata:
   ollama:
   neo4jdata:
+  uploads:

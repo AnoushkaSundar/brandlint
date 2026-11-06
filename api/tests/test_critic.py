@@ -116,3 +116,12 @@ def test_order_is_deterministic_and_tier0_first():
     second, _ = run(b, a)
     assert [f.id for f in first] == [f.id for f in second]
     assert first[0].tier == 0
+
+
+def test_re_reviewing_a_draft_repeats_the_gap_id():
+    first = cand(rule_id=None, rule_version=None, review_id="rev-1")
+    second = cand(rule_id=None, rule_version=None, review_id="rev-2")
+    other_draft = cand(rule_id=None, rule_version=None, content_version_id="cv2")
+    _, gaps = run(first, second, other_draft)
+    assert gaps[0].id == gaps[1].id
+    assert gaps[0].id != gaps[2].id
