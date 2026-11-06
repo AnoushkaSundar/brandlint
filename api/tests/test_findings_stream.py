@@ -25,7 +25,6 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
-from sqlalchemy.pool import StaticPool
 
 TONE = Rule(
     id="R-TONE-02", version=1, type="judgment", text="Stay calm.",
@@ -41,11 +40,11 @@ TIMEOUT_S = 10
 
 
 @pytest.fixture()
-def session_factory():
+def session_factory(tmp_path):
+    # A file, not one shared connection: reviews write from several threads.
     engine = create_engine(
-        "sqlite://",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
+        f"sqlite:///{tmp_path}/test.db",
+        connect_args={"check_same_thread": False, "timeout": 30},
     )
     Base.metadata.create_all(
         engine,

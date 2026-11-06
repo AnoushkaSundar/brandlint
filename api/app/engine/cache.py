@@ -7,8 +7,8 @@ Only usable answers go in, so an outage or a bad reply is never remembered.
 A hit counts only if every fact it depended on is unchanged and the time is before
 `valid_until`, the earliest expiry among those facts.
 
-The cache only saves calls. A database error here counts as a miss, so the model
-answers and the review carries on.
+The cache only saves calls, so any failure here counts as a miss: the model answers
+and the review carries on.
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.engine import models
@@ -59,7 +59,7 @@ class VerdictCache:
                         models.ReviewCache.cache_key == key
                     )
                 )
-        except SQLAlchemyError:
+        except Exception:
             logger.warning("verdict cache read failed", exc_info=True)
             return None
         if row is None:
@@ -109,5 +109,5 @@ class VerdictCache:
                 except IntegrityError:
                     # A parallel review stored the same answer first.
                     session.rollback()
-        except SQLAlchemyError:
+        except Exception:
             logger.warning("verdict cache write failed", exc_info=True)
