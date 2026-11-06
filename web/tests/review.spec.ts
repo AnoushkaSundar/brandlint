@@ -100,6 +100,7 @@ function boardFor(findings: readonly Finding[] = FINDINGS): Board {
   return {
     state: "resolving",
     legal_required: false,
+    can_restart: false,
     findings: findings.map((finding) => ({
       id: finding.id,
       status: "open",
@@ -1635,6 +1636,79 @@ test.describe("moving content through the workflow", () => {
     await page.goto("/content/c1/review");
 
     await expect(bar(page)).toContainText("Status: Resolving");
+  });
+
+  test("a failed run can be started again", async ({ page }) => {
+    await stubReview(page);
+    const failed = {
+      ...boardFor(),
+      state: "ai_review" as const,
+      can_restart: true,
+      moves: [
+        {
+          to: "resolving" as const,
+          needs_reason: false,
+          blocked_by: "The review didn't finish. Start it again.",
+        },
+      ],
+    };
+    await stubBoard(page, failed);
+    await page.route(
+      `**/stub-api/engine/reviews/${ENGINE_ID}/findings`,
+      (route) => route.abort(),
+    );
+    let starts = 0;
+    await page.route("**/stub-api/content/c1/reviews", (route) => {
+      starts += 1;
+      return route.fulfill({ status: 201, json: CONTENT.latest_review });
+    });
+    await page.goto("/content/c1/review");
+    await expect(bar(page)).toContainText("didn't finish");
+
+    await stubReview(page);
+    await bar(page).getByRole("button", { name: "Start review again" }).click();
+
+    await expect(findingCards(page)).toHaveCount(FINDINGS.length);
+    expect(starts).toBe(1);
+  });
+
+  test("a refused restart says why", async ({ page }) => {
+    await stubReview(page);
+    await stubBoard(page, { ...boardFor(), state: "ai_review", can_restart: true });
+    await page.route("**/stub-api/content/c1/reviews", (route) =>
+      route.fulfill({
+        status: 409,
+        json: { detail: "This review is still running." },
+      }),
+    );
+    await page.goto("/content/c1/review");
+
+    await bar(page).getByRole("button", { name: "Start review again" }).click();
+
+    await expect(bar(page).getByRole("alert")).toHaveText(
+      "This review is still running.",
+    );
+  });
+
+  test("a dropped stream is reopened and catches up", async ({ page }) => {
+    await stubReview(page);
+    let opens = 0;
+    await page.route(
+      `**/stub-api/engine/reviews/${ENGINE_ID}/findings`,
+      (route) => {
+        opens += 1;
+        return opens === 1
+          ? route.abort()
+          : route.fulfill({
+              contentType: "text/event-stream",
+              body: stream(FINDINGS),
+            });
+      },
+    );
+    await page.goto("/content/c1/review");
+
+    await expect(findingCards(page)).toHaveCount(FINDINGS.length);
+    await expect(page.locator("main").getByRole("alert")).toHaveCount(0);
   });
 
   test("offers no moves on finished content", async ({ page }) => {

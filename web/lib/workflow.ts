@@ -22,6 +22,7 @@ export type MoveOption = {
 export type Board = {
   state: ContentState;
   legal_required: boolean;
+  can_restart: boolean;
   findings: FindingStanding[];
   moves: MoveOption[];
 };
