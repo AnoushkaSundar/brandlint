@@ -1,6 +1,17 @@
+from datetime import datetime
+from typing import Any, Literal
+
 from pydantic import BaseModel
 
-from app.contracts import ContentState, DecisionAction, FindingStatus
+from app.content.schemas import ContentOut
+from app.contracts import (
+    CheckType,
+    ContentState,
+    DecisionAction,
+    FindingStatus,
+    Severity,
+    Span,
+)
 
 
 class DecisionIn(BaseModel):
@@ -39,3 +50,94 @@ class Board(BaseModel):
     legal_required: bool
     findings: list[FindingStanding]
     moves: list[MoveOut]
+
+
+class QueueItem(BaseModel):
+    content_id: str
+    title: str
+    channel: str
+    state: ContentState
+    finding_id: str
+    kind: Literal["unsure", "override", "fix"]
+    severity: Severity
+    check: CheckType
+    explanation: str
+    # The creator's reason, for an override.
+    reason: str | None
+    # The wording to sign off, for a fix.
+    fix_text: str | None
+
+
+class Queue(BaseModel):
+    items: list[QueueItem]
+    # Pieces submitted and waiting for a reviewer to pass or send back.
+    ready: list[ContentOut]
+
+
+class CommentIn(BaseModel):
+    body: str
+    content_version_id: str
+    finding_id: str | None = None
+    span: Span | None = None
+    parent_id: str | None = None
+
+
+class CommentOut(BaseModel):
+    id: str
+    content_version_id: str
+    finding_id: str | None
+    span: dict[str, Any] | None
+    parent_id: str | None
+    author: str
+    body: str
+    mentions: list[str]
+    created_at: datetime
+
+
+class StateEntry(BaseModel):
+    from_state: ContentState
+    to_state: ContentState
+    actor: str
+    reason: str | None
+    created_at: datetime
+
+
+class DecisionEntry(BaseModel):
+    finding_id: str
+    action: DecisionAction
+    actor: str
+    role: str
+    reason: str | None
+    version: int
+    created_at: datetime
+
+
+class PublishedStamp(BaseModel):
+    version: int
+    rulebook_version: int
+    approvers: list[str]
+    published_at: datetime
+
+
+class History(BaseModel):
+    states: list[StateEntry]
+    decisions: list[DecisionEntry]
+    stamp: PublishedStamp | None
+
+
+class AuditEntry(BaseModel):
+    id: str
+    actor: str
+    role: str
+    action: str
+    target_type: str
+    target_id: str
+    before: dict[str, Any] | None
+    after: dict[str, Any] | None
+    rulebook_version: int | None
+    created_at: datetime
+
+
+class AuditPage(BaseModel):
+    total: int
+    items: list[AuditEntry]

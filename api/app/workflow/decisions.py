@@ -43,6 +43,7 @@ FindingKey = tuple[str | None, str, str]
 class FindingProgress:
     status: FindingStatus = FindingStatus.open
     fix_text: str | None = None
+    reason: str | None = None
 
 
 def finding_progress(session: Session, review: Review) -> dict[str, FindingProgress]:
@@ -59,6 +60,7 @@ def finding_progress(session: Session, review: Review) -> dict[str, FindingProgr
         progress[decision.finding_id] = FindingProgress(
             status=FindingStatus(decision.status),
             fix_text=decision.fix_text or kept,
+            reason=decision.reason,
         )
     return progress
 
