@@ -66,8 +66,12 @@ def check_hidden_content(
                 )
             )
 
-    # OCR text that doesn't appear in the visible copy.
+    # OCR text that doesn't appear in the visible copy. A piece with no visible
+    # copy (a standalone image) has nothing to compare against: its OCR text IS
+    # the copy. The injection detector still scans that text.
     visible = " ".join(c.text for c in chunks if _is_visible(c)).lower()
+    if not visible.strip():
+        return findings
     for chunk in chunks:
         style = chunk.style or {}
         text = chunk.text.strip()
