@@ -6,7 +6,9 @@
       "Tarnhollow Onramp",
       "Onramp"
     ],
-    "renamed_from": "Tarnhollow Onramp"
+    "renamed_from": "Tarnhollow Onramp",
+    "rule_id": "R-TERM-02",
+    "rule_version": 1
   },
   {
     "id": "T-002",
@@ -16,7 +18,9 @@
       "newbies",
       "fresher",
       "freshers"
-    ]
+    ],
+    "rule_id": "R-TERM-03",
+    "rule_version": 1
   },
   {
     "id": "T-003",
@@ -26,7 +30,9 @@
       "world-leading",
       "market-leading",
       "revolutionary"
-    ]
+    ],
+    "rule_id": "R-TERM-01",
+    "rule_version": 1
   },
   {
     "id": "T-004",
