@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { CommentThread } from "@/components/comment-thread";
 import { FindingCard } from "@/components/finding-card";
 import { ReviewDocument } from "@/components/review-document";
 import { WorkflowBar } from "@/components/workflow-bar";
@@ -17,6 +18,12 @@ import type { Chunk, ContentState, Finding } from "@/lib/contracts";
 import { getChunks, streamFindings } from "@/lib/engineClient";
 import { trackProgress, UNSETTLED } from "@/lib/findingLabels";
 import { sortFindings } from "@/lib/highlights";
+import {
+  type Comment,
+  type CommentInput,
+  getComments,
+  postComment,
+} from "@/lib/reviewDesk";
 import {
   type Board,
   decide,
@@ -39,8 +46,11 @@ function Findings({
   selectedId,
   clauseRefs,
   standings,
+  comments,
+  versionId,
   onSelect,
   onDecide,
+  onComment,
 }: {
   contentId: string;
   findings: readonly Finding[];
@@ -48,8 +58,11 @@ function Findings({
   selectedId: string | null;
   clauseRefs: ReadonlyMap<string, string>;
   standings: ReadonlyMap<string, FindingStanding>;
+  comments: readonly Comment[];
+  versionId: string;
   onSelect: (findingId: string) => void;
   onDecide: (findingId: string, input: DecisionInput) => Promise<void>;
+  onComment: (input: CommentInput) => Promise<void>;
 }) {
   return (
     <>
@@ -103,8 +116,11 @@ function Findings({
               selected={finding.id === selectedId}
               clauseRefs={clauseRefs}
               standing={standings.get(finding.id)}
+              comments={comments}
+              versionId={versionId}
               onSelect={onSelect}
               onDecide={onDecide}
+              onComment={onComment}
             />
           </li>
         ))}
@@ -123,6 +139,7 @@ export function ReviewScreen({ id }: { id: string }) {
     new Map(),
   );
   const [board, setBoard] = useState<Board | null>(null);
+  const [comments, setComments] = useState<Comment[]>([]);
   const leftAiReview = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const documentRef = useRef<HTMLDivElement>(null);
@@ -132,6 +149,21 @@ export function ReviewScreen({ id }: { id: string }) {
     getContent(id).then(
       (loaded) => {
         if (current) setContent(loaded);
+      },
+      (caught: ApiError) => {
+        if (current) setError(caught.message);
+      },
+    );
+    return () => {
+      current = false;
+    };
+  }, [id]);
+
+  useEffect(() => {
+    let current = true;
+    getComments(id).then(
+      (loaded) => {
+        if (current) setComments(loaded);
       },
       (caught: ApiError) => {
         if (current) setError(caught.message);
@@ -254,6 +286,10 @@ export function ReviewScreen({ id }: { id: string }) {
     setBoard(await decide(id, findingId, input));
   }
 
+  async function comment(input: CommentInput) {
+    setComments(await postComment(id, input));
+  }
+
   async function move(to: ContentState, reason?: string) {
     setBoard(await moveContent(id, to, reason));
   }
@@ -350,11 +386,28 @@ export function ReviewScreen({ id }: { id: string }) {
             selectedId={selectedId}
             clauseRefs={clauseRefs}
             standings={standings}
+            comments={comments}
+            versionId={review.content_version_id}
             onSelect={selectFinding}
             onDecide={decideFinding}
+            onComment={comment}
           />
         </section>
       </div>
+
+      <section aria-labelledby="comments-heading" className="mt-8 max-w-2xl">
+        <h2 id="comments-heading" className="text-lg font-semibold">
+          Comments on this version
+        </h2>
+        <div className="mt-3">
+          <CommentThread
+            label="Add a comment"
+            comments={comments}
+            versionId={review.content_version_id}
+            onPost={comment}
+          />
+        </div>
+      </section>
     </div>
   );
 }

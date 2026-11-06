@@ -172,6 +172,9 @@ async function stubReview(
   await page.route("**/stub-api/admin/rulebook*", (route) =>
     route.fulfill({ json: RULES }),
   );
+  await page.route("**/stub-api/workflow/content/c1/comments", (route) =>
+    route.fulfill({ json: [] }),
+  );
   await page.route("**/stub-api/memory/precedents*", (route) =>
     route.fulfill({ json: [] }),
   );
