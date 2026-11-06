@@ -72,11 +72,11 @@
       "sources": [
         "R-CLAIM-03 §4.3"
       ],
-      "model": "claude-haiku-5-5"
+      "model": "claude-haiku-4-5"
     },
     "ai_generated": true,
     "models_used": [
-      "claude-haiku-5-5",
+      "claude-haiku-4-5",
       "gpt-6-luna"
     ],
     "fix_available": true,
@@ -120,11 +120,11 @@
       "sources": [
         "R-TONE-03 §2.3"
       ],
-      "model": "claude-haiku-5-5"
+      "model": "claude-haiku-4-5"
     },
     "ai_generated": true,
     "models_used": [
-      "claude-haiku-5-5"
+      "claude-haiku-4-5"
     ],
     "fix_available": true,
     "status": "open"
