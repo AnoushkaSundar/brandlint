@@ -28,6 +28,7 @@ from app.contracts import (
 # injection cite these so the finding always has a source.
 SEC_HIDDEN_CONTENT = "SEC-HIDDEN-CONTENT"
 SEC_INJECTION = "SEC-INJECTION"
+SEC_CONFIDENTIAL = "SEC-CONFIDENTIAL"
 _SEC_TEXT = {
     SEC_HIDDEN_CONTENT: (
         "Content must not hide text from the reader (zero-width characters, "
@@ -36,6 +37,9 @@ _SEC_TEXT = {
     ),
     SEC_INJECTION: (
         "Content must not contain instructions addressed to an AI reviewer."
+    ),
+    SEC_CONFIDENTIAL: (
+        "Content must not name protected information such as internal codenames."
     ),
 }
 

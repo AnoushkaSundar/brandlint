@@ -4,6 +4,7 @@ a brand rule, an approved fact, or a built-in platform security rule."""
 from __future__ import annotations
 
 from app.engine.checks.context import (
+    SEC_CONFIDENTIAL,
     SEC_HIDDEN_CONTENT,
     SEC_INJECTION,
     CheckContext,
@@ -16,6 +17,7 @@ from app.engine.checks.routing import checks_for, run_tier0
 from app.engine.checks.terms import check_terms
 
 __all__ = [
+    "SEC_CONFIDENTIAL",
     "SEC_HIDDEN_CONTENT",
     "SEC_INJECTION",
     "CheckContext",

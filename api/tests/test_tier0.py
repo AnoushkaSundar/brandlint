@@ -120,7 +120,7 @@ def test_confidential_codename_is_flagged_critical():
     )
     assert len(findings) == 1
     assert findings[0].severity == Severity.critical
-    assert findings[0].fact_ids == ["F-SECRET"]
+    assert findings[0].rule_id == "SEC-CONFIDENTIAL"
 
 
 def test_required_element_uses_required_text_not_rule_sentence():
@@ -152,3 +152,83 @@ def test_run_tier0_aggregates_and_every_finding_cites_a_source():
     checks = {f.check.value for f in findings}
     assert {"terminology", "claim", "messaging", "hidden_content"} <= checks
     assert all(f.rule_id or f.fact_ids for f in findings)
+
+
+CONFIDENTIAL_RULE = Rule(
+    id="R-CLAIM-05", version=2, type="deterministic",
+    text="Never mention unreleased products or internal codenames.",
+    clause_ref="§4.5", severity="critical", channel_scope=[], status="approved",
+)
+
+
+def _everything_shown(finding) -> str:
+    return finding.model_dump_json()
+
+
+def test_confidential_finding_cites_the_rule_and_hides_the_fact():
+    secret = Fact(
+        id="F-010", statement="Bluewren is planned for Q2 2027.", value="Bluewren",
+        source_doc="strategy", owner="exec", data_class="confidential", version=1,
+    )
+    findings = check_confidential_terms(
+        _chunks("Meet Bluewren."), _ctx(facts=[secret], rules=[CONFIDENTIAL_RULE])
+    )
+    assert len(findings) == 1
+    finding = findings[0]
+    assert (finding.rule_id, finding.rule_version) == ("R-CLAIM-05", 2)
+    assert finding.cited_text == CONFIDENTIAL_RULE.text
+    assert finding.fact_ids == []
+    assert finding.trace.sources == ["§4.5"]
+    assert "Q2 2027" not in _everything_shown(finding)
+    assert "F-010" not in _everything_shown(finding)
+
+
+def test_a_draft_rule_is_not_cited_for_confidential_findings():
+    draft = CONFIDENTIAL_RULE.model_copy(update={"status": "draft"})
+    findings = check_confidential_terms(
+        _chunks("Meet Bluewren."), _ctx(facts=[SECRET_FACT], rules=[draft])
+    )
+    assert findings[0].rule_id == "SEC-CONFIDENTIAL"
+
+
+def test_restricted_facts_are_protected_too():
+    restricted = SECRET_FACT.model_copy(update={"data_class": "restricted"})
+    findings = check_confidential_terms(
+        _chunks("Meet Bluewren."), _ctx(facts=[restricted])
+    )
+    assert len(findings) == 1
+    assert SECRET_FACT.statement not in _everything_shown(findings[0])
+
+
+def test_expired_confidential_fact_does_not_quote_its_statement():
+    fact = EXPIRED_FACT.model_copy(update={"data_class": "confidential"})
+    findings = check_fact_expiry(_chunks("Retention hit 80%."), _ctx(facts=[fact]))
+    assert len(findings) == 1
+    assert fact.statement not in _everything_shown(findings[0])
+    assert findings[0].fact_ids == [fact.id]
+
+
+def test_expired_public_fact_still_quotes_its_statement():
+    findings = check_fact_expiry(_chunks("Retention hit 80%."), _ctx(facts=[EXPIRED_FACT]))
+    assert findings[0].cited_text == EXPIRED_FACT.statement
+
+
+def test_a_name_inside_a_longer_banned_name_is_one_finding():
+    term = Term(
+        id="t", preferred="Tarnhollow Landing", banned=["Tarnhollow Onramp", "Onramp"],
+        renamed_from="Tarnhollow Onramp", rule_id=TERM_RULE_HIGH.id,
+    )
+    ctx = _ctx(terms=[term], rules=[TERM_RULE_HIGH])
+    findings = check_terms(_chunks("Tarnhollow Onramp and then Onramp again."), ctx)
+    spans = [(f.spans[0].start, f.spans[0].end) for f in findings]
+    assert spans == [(0, 17), (27, 33)]
+
+
+def test_overlaps_across_terms_keep_the_longest():
+    short = Term(id="a", preferred="x", banned=["Onramp"], rule_id=TERM_RULE_LOW.id)
+    long = Term(
+        id="b", preferred="y", banned=["Tarnhollow Onramp"], rule_id=TERM_RULE_HIGH.id
+    )
+    ctx = _ctx(terms=[short, long], rules=[TERM_RULE_LOW, TERM_RULE_HIGH])
+    findings = check_terms(_chunks("Tarnhollow Onramp."), ctx)
+    assert [f.rule_id for f in findings] == [TERM_RULE_HIGH.id]
