@@ -10,7 +10,7 @@ from app.auth.models import User
 from app.auth.router import router as auth_router
 from app.auth.security import SESSION_COOKIE, create_token, hash_password
 from app.content import storage
-from app.content.models import Content
+from app.content.models import Content, ContentVersion
 from app.content.router import router as content_router
 from app.contracts import Role
 from app.db import Base, get_session
@@ -426,3 +426,68 @@ def test_a_blank_file_field_from_a_browser_is_ignored(client_for):
 
     assert response.status_code == 201
     assert response.json()["versions"][0]["file_name"] is None
+
+
+def captured_source(monkeypatch):
+    calls = []
+
+    def fake_start_review(content_version_id, channel, rulebook_version, source):
+        calls.append(source)
+        return "rev-captured"
+
+    monkeypatch.setattr("app.clients.engine.start_review", fake_start_review)
+    return calls
+
+
+def test_a_review_hands_the_engine_pasted_text(client_for, monkeypatch):
+    calls = captured_source(monkeypatch)
+    client = client_for()
+    content_id = create(client, text="Hello there", data_class="internal").json()["id"]
+
+    assert client.post(f"/content/{content_id}/reviews").status_code == 201
+
+    source = calls[0]
+    assert source.text == "Hello there"
+    assert source.data_class.value == "internal"
+    assert source.file_bytes is None
+
+
+def test_a_review_hands_the_engine_the_uploaded_bytes(client_for, monkeypatch):
+    calls = captured_source(monkeypatch)
+    client = client_for()
+    content_id = upload(client, "guide.pdf", PDF).json()["id"]
+
+    assert client.post(f"/content/{content_id}/reviews").status_code == 201
+
+    source = calls[0]
+    assert source.file_bytes == PDF
+    assert source.file_name == "guide.pdf"
+    assert source.text == ""
+
+
+def test_a_review_covers_the_newest_upload(client_for, monkeypatch):
+    calls = captured_source(monkeypatch)
+    client = client_for()
+    content_id = upload(client, "first.pdf", PDF).json()["id"]
+    client.post(f"/content/{content_id}/versions", files={"file": ("second.png", PNG)})
+
+    client.post(f"/content/{content_id}/reviews")
+
+    assert calls[0].file_name == "second.png"
+    assert calls[0].file_bytes == PNG
+
+
+def test_a_missing_upload_is_refused_and_changes_nothing(client_for, session, monkeypatch):
+    calls = captured_source(monkeypatch)
+    client = client_for()
+    content_id = upload(client, "guide.pdf", PDF).json()["id"]
+    version = session.scalars(select(ContentVersion)).one()
+    storage.stored_path(version.file_ref).unlink()
+
+    response = client.post(f"/content/{content_id}/reviews")
+
+    assert response.status_code == 409
+    assert "Upload it again" in response.json()["detail"]
+    assert calls == []
+    assert client.get(f"/content/{content_id}").json()["state"] == "draft"
+    assert session.scalars(select(Review)).first() is None
