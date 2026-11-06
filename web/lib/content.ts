@@ -18,6 +18,7 @@ export type ContentVersion = {
   version: number;
   text: string;
   file_name: string | null;
+  fixes_applied?: boolean;
   created_by: string;
   created_at: string;
 };
@@ -63,7 +64,14 @@ export const STATE_LABELS: Record<ContentState, string> = {
   rejected: "Rejected",
 };
 
-export const LOCKED_STATES: ContentState[] = ["published", "rejected"];
+// Once a piece has been submitted, new text would skip the review it's in.
+export const LOCKED_STATES: ContentState[] = [
+  "reviewer_check",
+  "manager_approval",
+  "legal_signoff",
+  "published",
+  "rejected",
+];
 
 export const REVIEWABLE_STATES: ContentState[] = [
   "draft",

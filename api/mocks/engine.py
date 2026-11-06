@@ -84,6 +84,10 @@ def _findings_for_review(review_id: str) -> list[dict]:
     return data.findings_for_piece(piece)
 
 
+def review_findings(review_id: str) -> list[dict]:
+    return _findings_for_review(review_id)
+
+
 def _require_finding(finding_id: str) -> tuple[str, dict]:
     match = data.find_finding(finding_id)
     if match is None:
@@ -145,16 +149,10 @@ def recheck(review_id: str, body: RecheckRequest) -> StreamingResponse:
     )
 
 
-@router.post("/findings/{finding_id}/fix")
-def request_fix(finding_id: str) -> dict:
+def suggest_fix(finding_id: str, attempt: int) -> dict:
     piece, finding = _require_finding(finding_id)
     if not finding["fix_available"]:
         raise HTTPException(status.HTTP_409_CONFLICT, "No fix is available")
-
-    _fix_attempts[finding_id] += 1
-    attempt = _fix_attempts[finding_id]
-    if attempt > MAX_FIX_ATTEMPTS:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, NO_SAFE_FIX)
 
     span = finding["spans"][-1]
     text = data.chunks_for_piece(piece)[span["chunk_id"]]
@@ -167,6 +165,17 @@ def request_fix(finding_id: str) -> dict:
         "diff": f"- {original}\n+ {suggested}",
         "attempt": attempt,
     }
+
+
+@router.post("/findings/{finding_id}/fix")
+def request_fix(finding_id: str) -> dict:
+    _require_finding(finding_id)
+    attempt = _fix_attempts[finding_id] + 1
+    if attempt > MAX_FIX_ATTEMPTS:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, NO_SAFE_FIX)
+    suggestion = suggest_fix(finding_id, attempt)
+    _fix_attempts[finding_id] = attempt
+    return suggestion
 
 
 @router.post("/verdicts/{finding_id}/replay")
