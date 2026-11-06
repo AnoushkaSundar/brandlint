@@ -332,3 +332,16 @@ def test_any_cache_failure_only_costs_a_model_call(factory, monkeypatch):
     model = Model()
     assert judge(model, VerdictCache(broken)).verdict == "VIOLATION"
     assert model.calls == 1
+
+
+def test_a_stale_cache_row_is_a_miss():
+    class Stale:
+        def get(self, key, facts):
+            return {"old": "shape"}
+
+        def put(self, key, **kwargs):
+            pass
+
+    model = Model()
+    assert judge(model, Stale()).verdict == "VIOLATION"
+    assert model.calls == 1

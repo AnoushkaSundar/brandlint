@@ -165,11 +165,12 @@ def _overlaps(a: Candidate, b: Candidate) -> bool:
 
 
 def _strength(candidate: Candidate) -> tuple[int, int, int, float]:
-    """Higher is stronger. A code verdict beats an AI one of equal standing."""
+    """Higher is stronger. A code verdict beats any AI one, because it has already
+    streamed: dropping it here would leave a finding on screen but not in the record."""
     return (
         _VERDICT_RANK[candidate.verdict],
-        _SEVERITY_RANK[candidate.severity],
         1 if candidate.tier == 0 else 0,
+        _SEVERITY_RANK[candidate.severity],
         candidate.confidence,
     )
 
