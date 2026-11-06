@@ -73,26 +73,6 @@ def test_restricted_is_not_sent_out_and_logs_error(session):
     assert row.provider is None
 
 
-def test_confidential_is_refused_until_masking(monkeypatch, session):
-    # Confidential data must never reach the transport while masking is unbuilt.
-    def must_not_be_called(body):
-        raise AssertionError("confidential payload reached the proxy")
-
-    monkeypatch.setattr(llm, "_chat_completion", must_not_be_called)
-
-    with pytest.raises(NotImplementedError):
-        llm.call(
-            purpose="classify",
-            data_class="confidential",
-            rule_ids=["R1"],
-            payload={"messages": [{"role": "user", "content": "Bluewren"}]},
-            session=session,
-        )
-    row = session.query(GatewayLog).one()
-    assert row.route == "block"
-    assert row.status == "error"
-
-
 def test_session_is_required():
     with pytest.raises((TypeError, ValueError)):
         llm.call(

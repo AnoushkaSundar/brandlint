@@ -2,13 +2,14 @@
 
 `gateway_log` records every llm.call: provider, model, route, what was masked,
 latency and outcome. It feeds the disclosure panel and the audit log.
+`token_vault` maps numbered tokens back to the values they replaced.
 """
 
 from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import JSON, DateTime, Integer, String, func
+from sqlalchemy import JSON, DateTime, Integer, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -33,3 +34,21 @@ class GatewayLog(Base):
     status: Mapped[str] = mapped_column(String, nullable=False)  # ok | error | blocked
     latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     error: Mapped[str | None] = mapped_column(String, nullable=True)
+
+
+class TokenVault(Base):
+    __tablename__ = "token_vault"
+    __table_args__ = (
+        UniqueConstraint("scope", "token", name="uq_token_vault_scope_token"),
+        UniqueConstraint("scope", "value", name="uq_token_vault_scope_value"),
+    )
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    # The review id, so a value keeps one token throughout a review.
+    scope: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    token: Mapped[str] = mapped_column(String, nullable=False)
+    value: Mapped[str] = mapped_column(String, nullable=False)
+    entity: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
