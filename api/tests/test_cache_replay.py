@@ -56,6 +56,8 @@ class Model:
 
     def __call__(self, data_class, rule_ids, payload, review_id):
         self.calls += 1
+        if "find factual claims" in payload["messages"][0]["content"]:
+            return {"claims": []}
         prompt = payload["messages"][-1]["content"]
         text = prompt.split("\n")[-2]
         words = language._WORD.findall(text)
@@ -109,7 +111,7 @@ def test_a_second_review_of_the_same_text_skips_the_model(factory):
     first = review(factory, model)
     calls = model.calls
     second = review(factory, model)
-    assert calls == 1
+    assert calls == 2  # One tone check and one claim extraction.
     assert model.calls == calls
     assert [f["verdict"] for f in findings_of(second)] == [
         f["verdict"] for f in findings_of(first)

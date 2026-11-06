@@ -163,7 +163,7 @@ def test_data_class_reaches_the_chunks_and_the_gateway(session_factory):
 
     source = ContentSource(data_class="confidential", text="Plain words here")
     finished_run(start(session_factory, source, classify=spy))
-    assert seen == ["confidential"]
+    assert set(seen) == {"confidential"}
 
 
 def test_unsupported_file_ends_with_an_error_not_an_empty_pass(session_factory):

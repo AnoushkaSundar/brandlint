@@ -79,6 +79,8 @@ def check_for_rule(rule: Rule) -> CheckType:
         return CheckType.tone
     if rule.id.startswith("R-TERM-"):
         return CheckType.terminology
+    if rule.id.startswith("R-CLAIM-"):
+        return CheckType.claim
     return CheckType.messaging
 
 
@@ -309,9 +311,11 @@ def review_chunks(
     model: str,
     max_workers: int = DEFAULT_WORKERS,
     cache: VerdictCache | None = None,
+    rules: list[Rule] | None = None,
 ) -> list[Candidate]:
     """Run every chunk x applicable rule, returning results in a stable order."""
-    rules = applicable_rules(ctx.rules, ctx.channel)
+    if rules is None:
+        rules = applicable_rules(ctx.rules, ctx.channel)
     pairs = [(chunk, rule) for chunk in chunks for rule in rules]
     if not pairs:
         return []

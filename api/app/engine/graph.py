@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 from app.clients.gateway import llm_call
 from app.contracts import Finding, Gap
 from app.engine import critic
+from app.engine.agents import claims as claims_agent
 from app.engine.agents import language
 from app.engine.agents.language import ClassifyFn
 from app.engine.cache import VerdictCache
@@ -41,6 +42,7 @@ os.environ["LANGSMITH_TRACING"] = "false"
 os.environ["LANGCHAIN_TRACING_V2"] = "false"
 
 GapSink = Callable[[list[Gap]], None]
+ClaimSink = claims_agent.ClaimSink
 
 
 class ReviewState(TypedDict, total=False):
@@ -105,6 +107,7 @@ def build_review_graph(
     gap_sink: GapSink,
     model: str = PINNED_MODEL,
     cache: VerdictCache | None = None,
+    claim_sink: claims_agent.ClaimSink | None = None,
 ) -> Any:
     def tier0(state: ReviewState) -> dict:
         found = run_tier0(state["chunks"], state["ctx"], state["fmt"])
@@ -123,7 +126,23 @@ def build_review_graph(
         return {"candidates": found}
 
     def claims(state: ReviewState) -> dict:
-        return {"candidates": []}  # Claims agent lands in block 5.
+        chunks, ctx = state["chunks"], state["ctx"]
+        flagged = flagged_chunk_ids(chunks, ctx)
+        found, units = claims_agent.review(
+            chunks, ctx, classify, flagged=flagged, model=model, cache=cache
+        )
+        if claim_sink:
+            claim_sink(units)
+        judged = language.review_chunks(
+            chunks,
+            ctx,
+            classify,
+            flagged=flagged,
+            model=model,
+            cache=cache,
+            rules=claims_agent.claim_rules(ctx.rules, ctx.channel),
+        )
+        return {"candidates": [*found, *judged]}
 
     def document(state: ReviewState) -> dict:
         return {"candidates": []}  # Tone-drift pass lands in block 5.
@@ -164,12 +183,15 @@ def run_review(
     on_finding: Callable[[Finding], None] | None = None,
     cache: VerdictCache | None = None,
     manifests: dict[str, dict] | None = None,
+    claim_sink: claims_agent.ClaimSink | None = None,
 ) -> tuple[list[Finding], list[Gap]]:
     """Runs the graph. `on_finding` gets each finding once, as soon as its track
     finishes, so code findings don't wait for the model. Tier 0 always goes first:
     a fast model's findings wait until the code checks have reported. Every one
     has passed the critic. The returned list is the final word."""
-    graph = build_review_graph(classify, gap_sink=gap_sink, model=model, cache=cache)
+    graph = build_review_graph(
+        classify, gap_sink=gap_sink, model=model, cache=cache, claim_sink=claim_sink
+    )
     known_facts = {fact.id for fact in ctx.facts}
     collected: list[Candidate] = []
     published: set[str] = set()
