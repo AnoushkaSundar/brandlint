@@ -74,12 +74,41 @@ function Move({
   );
 }
 
+function Restart({ onRestart }: { onRestart: () => Promise<void> }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function restart() {
+    setBusy(true);
+    setError(null);
+    onRestart().catch((caught: ApiError) => {
+      setError(caught.message);
+      setBusy(false);
+    });
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <Button type="button" size="sm" disabled={busy} onClick={restart}>
+        Start review again
+      </Button>
+      {error && (
+        <p role="alert" className="border-l-2 border-destructive pl-2">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function WorkflowBar({
   board,
   onMove,
+  onRestart,
 }: {
   board: Board;
   onMove: (to: ContentState, reason?: string) => Promise<void>;
+  onRestart: () => Promise<void>;
 }) {
   // Leaving AI review happens by itself when the run ends, so it's never a button.
   const inAiReview = board.state === "ai_review";
@@ -99,6 +128,7 @@ export function WorkflowBar({
         Status: <span className="font-medium">{STATE_LABELS[board.state]}</span>
       </p>
       {waiting && <p>{waiting}</p>}
+      {board.can_restart && <Restart onRestart={onRestart} />}
       {board.legal_required && (
         <p>A high-severity claim means legal must sign this off.</p>
       )}

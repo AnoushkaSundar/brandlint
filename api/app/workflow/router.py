@@ -78,6 +78,15 @@ def _facts(session: Session, content: Content, review: Review | None) -> ReviewF
     )
 
 
+def _can_restart(content: Content, user: User, facts: ReviewFacts) -> bool:
+    """A run that ended without finishing can only be started again by its creator."""
+    return (
+        content.state == ContentState.ai_review.value
+        and content.creator_id == user.id
+        and facts.run_status in ("failed", "unknown")
+    )
+
+
 def _board(session: Session, content: Content, user: User) -> Board:
     facts = _facts(session, content, latest_review(session, content.id))
     refused = refused_overrides(session, content.id)
@@ -99,6 +108,7 @@ def _board(session: Session, content: Content, user: User) -> Board:
     return Board(
         state=ContentState(content.state),
         legal_required=needs_legal(facts.findings),
+        can_restart=_can_restart(content, user, facts),
         findings=standings,
         moves=[
             MoveOut(to=m.to, needs_reason=m.needs_reason, blocked_by=m.blocked_by)
@@ -181,10 +191,15 @@ def decide(
 
 
 def _fixed_text(review: Review, facts: ReviewFacts) -> str | None:
-    """The text with every approved fix in place, or None when there are no fixes."""
-    if all(item.fix_text is None for item in facts.progress.values()):
-        return None
+    """The clean text with every approved fix in place, or None if nothing changes.
+
+    Overriding a hidden-text finding doesn't remove the text, so it's cleaned here
+    whether or not any fix was accepted.
+    """
     chunks = engine_client.list_chunks(review.engine_review_id)
+    has_fix = any(item.fix_text is not None for item in facts.progress.values())
+    if not has_fix and not fixes.has_hidden_text(chunks):
+        return None
     return fixes.text_with_fixes(chunks, facts.findings, facts.progress)
 
 

@@ -104,6 +104,19 @@ def is_readable(chunk: Chunk) -> bool:
     )
 
 
+def has_hidden_text(chunks: Sequence[Chunk]) -> bool:
+    """Whether the text needs cleaning, fixes or not.
+
+    Images and their OCR text were never part of the copy, so they don't count.
+    """
+    for chunk in chunks:
+        if chunk.kind == "image" or (chunk.style or {}).get("from_ocr"):
+            continue
+        if not is_readable(chunk) or chunk.text != chunk.text.translate(_ZERO_WIDTH):
+            return True
+    return False
+
+
 def fix_span(finding: Finding) -> Span | None:
     """The span a fix rewrites. Empty spans mark no text, so they don't count."""
     spans = [span for span in finding.spans if span.end > span.start]

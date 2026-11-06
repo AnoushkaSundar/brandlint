@@ -568,6 +568,7 @@ test.describe("comments", () => {
         json: {
           state: "resolving",
           legal_required: false,
+          can_restart: false,
           findings: [],
           moves: [],
         },

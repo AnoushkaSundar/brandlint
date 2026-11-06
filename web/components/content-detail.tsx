@@ -182,8 +182,8 @@ export function ContentDetail({ id }: { id: string }) {
         )}
         {latest.fixes_applied && latest.file_name && (
           <p className="mt-2 text-sm">
-            This text has the accepted fixes. The uploaded file hasn&apos;t
-            changed.
+            This text is the cleaned version with any accepted fixes. The
+            uploaded file hasn&apos;t changed.
           </p>
         )}
         {latest.text && (
