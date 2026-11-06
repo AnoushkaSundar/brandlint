@@ -125,3 +125,10 @@ def test_re_reviewing_a_draft_repeats_the_gap_id():
     _, gaps = run(first, second, other_draft)
     assert gaps[0].id == gaps[1].id
     assert gaps[0].id != gaps[2].id
+
+
+def test_code_beats_a_more_severe_ai_finding_on_the_same_source():
+    code = cand(tier=0, ai_generated=False, severity="low", confidence=1.0)
+    ai = cand(severity="high", confidence=1.0)
+    findings, _ = run(ai, code)
+    assert [f.tier for f in findings] == [0]

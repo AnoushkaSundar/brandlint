@@ -24,6 +24,7 @@ from app.admin.gaps import save_gaps
 from app.contracts import Chunk, ContentSource, Finding, Gap
 from app.db import get_sessionmaker
 from app.engine import graph, models
+from app.engine.agents.claims import ClaimUnit
 from app.engine.brand import BrandData, load_brand
 from app.engine.cache import VerdictCache
 from app.engine.checks import CheckContext
@@ -105,6 +106,25 @@ def _save_chunks(session_factory: SessionFactory, chunks: list[ParsedChunk]) -> 
         session.commit()
 
 
+def _claim_log(session_factory: SessionFactory, run: ReviewRun) -> graph.ClaimSink:
+    def sink(units: list[ClaimUnit]) -> None:
+        with session_factory() as session:
+            for unit in units:
+                session.add(
+                    models.ClaimUnit(
+                        id=str(uuid.uuid4()),
+                        review_id=run.review_id,
+                        content_version_id=run.content_version_id,
+                        normalized_claim=unit.text,
+                        span_refs=unit.spans,
+                        depends_on=unit.depends_on,
+                    )
+                )
+            session.commit()
+
+    return sink
+
+
 def _save_findings(
     session_factory: SessionFactory,
     findings: list[Finding],
@@ -162,6 +182,7 @@ def _execute(
             on_finding=lambda f: run.add("finding", f.model_dump(mode="json")),
             cache=VerdictCache(session_factory),
             manifests=manifests,
+            claim_sink=_claim_log(session_factory, run),
         )
         base = {
             "fmt": check_format,

@@ -33,7 +33,7 @@ from app.engine.chunking import ParsedChunk
 from app.engine.critic import Candidate
 from app.gateway.llm import POLICY_VERSION
 
-PROMPT_VERSION = f"language-v1+{ANCHORS_VERSION}"
+PROMPT_VERSION = f"language-v4+{ANCHORS_VERSION}"
 MAX_EXPLANATION = 500
 DEFAULT_WORKERS = 8
 
@@ -56,7 +56,7 @@ Reply with JSON only, in exactly this shape:
 id>", "verdict": "VIOLATION" | "UNSURE" | "PASS", "span": "<exact quote from the \
 material, or null>", "confidence": <0 to 1>, "explanation": "<one sentence>"}]}
 Give exactly one verdict, for the given rule only. Quote the shortest exact \
-passage that breaks the rule. Use UNSURE when the rule does not clearly decide."""
+passage that breaks the rule. If nothing in the material is covered by the rule, the verdict is PASS. Use UNSURE only when the material is covered by the rule and it could reasonably go either way."""
 
 
 class ModelVerdict(BaseModel):
@@ -79,6 +79,8 @@ def check_for_rule(rule: Rule) -> CheckType:
         return CheckType.tone
     if rule.id.startswith("R-TERM-"):
         return CheckType.terminology
+    if rule.id.startswith("R-CLAIM-"):
+        return CheckType.claim
     return CheckType.messaging
 
 
@@ -95,17 +97,16 @@ def applicable_rules(rules: list[Rule], channel: str) -> list[Rule]:
 
 
 def control_for(chunk: ParsedChunk) -> tuple[str, str] | None:
-    """A question code can answer, chosen from the chunk hash so Replay is stable.
+    """A question code can answer. A model that has been hijacked by the content,
+    or isn't reading it, tends to get this wrong.
 
-    A model that has been hijacked by the content, or is not reading it, tends to
-    get this wrong. Returns None when the chunk has no words to judge.
+    Always the first word: Haiku miscounts the last word often enough to turn sound
+    verdicts into false UNSUREs. Returns None when the chunk has no words to judge.
     """
     words = _WORD.findall(chunk.text)
     if not words:
         return None
-    if int(chunk.content_hash, 16) % 2 == 0:
-        return "What is the first word of the material?", words[0]
-    return "What is the last word of the material?", words[-1]
+    return "What is the first word of the material?", words[0]
 
 
 def build_payload(
@@ -252,10 +253,14 @@ def judge(
         POLICY_VERSION,
     )
     facts = {fact.id: fact.version for fact in ctx.facts}
+    result = None
     stored = cache.get(key, facts) if cache else None
     if stored is not None:
-        result = ModelVerdict.model_validate(stored)
-    else:
+        try:
+            result = ModelVerdict.model_validate(stored)
+        except ValidationError:
+            result = None  # A stale row is a miss, not a failure.
+    if result is None:
         payload = build_payload(chunk, rule, ctx.channel, question)
         try:
             raw = classify(chunk.data_class, [rule.id], payload, ctx.review_id)
@@ -309,9 +314,11 @@ def review_chunks(
     model: str,
     max_workers: int = DEFAULT_WORKERS,
     cache: VerdictCache | None = None,
+    rules: list[Rule] | None = None,
 ) -> list[Candidate]:
     """Run every chunk x applicable rule, returning results in a stable order."""
-    rules = applicable_rules(ctx.rules, ctx.channel)
+    if rules is None:
+        rules = applicable_rules(ctx.rules, ctx.channel)
     pairs = [(chunk, rule) for chunk in chunks for rule in rules]
     if not pairs:
         return []

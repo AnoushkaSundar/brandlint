@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.contracts import Rule, Span, Verdict
 from app.engine import models
-from app.engine.agents import language
+from app.engine.agents import claims, language
 from app.engine.agents.language import ClassifyFn
 from app.engine.brand import load_brand
 from app.engine.checks import CheckContext, run_tier0
@@ -70,6 +70,33 @@ def _replay_language(
     return candidate.verdict.value, _spans(candidate.spans)
 
 
+def _replay_claim(
+    finding: models.Finding, manifest: dict, session: Session, classify: ClassifyFn
+) -> tuple[str, list[dict]]:
+    brand = load_brand(session, manifest["rulebook_version"])
+    ctx = CheckContext(
+        review_id=finding.review_id,
+        content_version_id=finding.content_version_id,
+        channel=manifest["channel"],
+        rules=brand.rules,
+        facts=brand.facts,
+        terms=brand.terms,
+        as_of=date.fromisoformat(manifest["as_of"]),
+    )
+    first = session.get(models.Chunk, manifest["spans"][0]["chunk_id"])
+    if first is None:
+        raise NotReplayable("The chunk this verdict judged has changed.")
+    unit = claims.ClaimUnit(manifest["claim"], manifest["spans"])
+    candidate = claims.verify(
+        unit, ctx, classify, data_class=first.data_class,
+        flagged=manifest.get("flagged", ()),
+        model=manifest["model"],
+    )
+    if candidate is None:
+        return Verdict.PASS.value, []
+    return candidate.verdict.value, _spans(candidate.spans)
+
+
 def _replay_code(
     finding: models.Finding, manifest: dict, session: Session
 ) -> tuple[str, list[dict]]:
@@ -106,10 +133,16 @@ def replay(finding_id: str, session: Session, classify: ClassifyFn) -> dict | No
 
     if manifest.get("kind") == "language":
         verdict, spans = _replay_language(finding, manifest, session, classify)
+    elif manifest.get("kind") == "claim":
+        if not manifest["spans"]:
+            raise NotReplayable("This finding covers the whole document.")
+        verdict, spans = _replay_claim(finding, manifest, session, classify)
     else:
         verdict, spans = _replay_code(finding, manifest, session)
+    # The verdict is what must repeat. A model can quote a slightly different
+    # passage even at temperature 0, so that's reported rather than hidden.
     return {
-        "identical": verdict == finding.verdict and spans == _spans(finding.spans),
+        "identical": verdict == finding.verdict,
         "verdict": verdict,
-        "manifest": manifest,
+        "manifest": {**manifest, "spans_identical": spans == _spans(finding.spans)},
     }

@@ -58,6 +58,8 @@ class Model:
 
     def __call__(self, data_class, rule_ids, payload, review_id):
         self.calls += 1
+        if "find factual claims" in payload["messages"][0]["content"]:
+            return {"claims": []}
         prompt = payload["messages"][-1]["content"]
         text = prompt.split("\n")[-2]
         words = language._WORD.findall(text)
@@ -111,7 +113,7 @@ def test_a_second_review_of_the_same_text_skips_the_model(factory):
     first = review(factory, model)
     calls = model.calls
     second = review(factory, model)
-    assert calls == 1
+    assert calls == 2  # One tone check and one claim extraction.
     assert model.calls == calls
     assert [f["verdict"] for f in findings_of(second)] == [
         f["verdict"] for f in findings_of(first)
@@ -307,10 +309,39 @@ def test_a_broken_cache_only_costs_a_model_call():
     assert model.calls == 1
 
 
+def test_replay_compares_verdicts_and_reports_span_drift(factory):
+    model = Model()
+    run = review(factory, model)
+    finding = next(f for f in findings_of(run) if f["tier"] == 1)
+
+    def narrower(data_class, rule_ids, payload, review_id):
+        reply = model(data_class, rule_ids, payload, review_id)
+        reply["verdicts"][0]["span"] = "newbie"
+        return reply
+
+    with factory() as session:
+        result = replay.replay(finding["id"], session, narrower)
+    assert result["identical"] is True
+    assert result["manifest"]["spans_identical"] is False
+
+
 def test_any_cache_failure_only_costs_a_model_call(factory, monkeypatch):
     def broken():
         raise SystemError("commit returned NULL")
 
     model = Model()
     assert judge(model, VerdictCache(broken)).verdict == "VIOLATION"
+    assert model.calls == 1
+
+
+def test_a_stale_cache_row_is_a_miss():
+    class Stale:
+        def get(self, key, facts):
+            return {"old": "shape"}
+
+        def put(self, key, **kwargs):
+            pass
+
+    model = Model()
+    assert judge(model, Stale()).verdict == "VIOLATION"
     assert model.calls == 1
