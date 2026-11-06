@@ -53,6 +53,7 @@ def test_tables_hold_every_contract_field():
         "channel_scope",
         "status",
         "supersedes",
+        "required_text",
     } == columns("rules")
     assert {
         "id",
@@ -64,7 +65,14 @@ def test_tables_hold_every_contract_field():
         "data_class",
         "version",
     } == columns("facts")
-    assert {"id", "preferred", "banned", "renamed_from"} == columns("terms")
+    assert {
+        "id",
+        "preferred",
+        "banned",
+        "renamed_from",
+        "rule_id",
+        "rule_version",
+    } == columns("terms")
     assert {"id", "kind", "file_ref", "meta"} == columns("assets")
     assert {
         "id",

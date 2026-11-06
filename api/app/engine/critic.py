@@ -126,9 +126,24 @@ def _is_cited(
     return all(fact_id in known_fact_ids for fact_id in candidate.fact_ids)
 
 
+def _gap_id(candidate: Candidate) -> str:
+    """Tied to the content, not the review, so re-reviewing the same draft repeats
+    the id. Governance counts gaps, and one draft must not look like several."""
+    anchor = "|".join(
+        [
+            candidate.content_version_id,
+            candidate.check.value,
+            candidate.rule_id or "",
+            ",".join(candidate.fact_ids),
+            ",".join(f"{s['chunk_id']}:{s['start']}:{s['end']}" for s in candidate.spans),
+        ]
+    )
+    return f"gap:{hashlib.sha256(anchor.encode()).hexdigest()[:32]}"
+
+
 def _to_gap(candidate: Candidate) -> Gap:
     return Gap(
-        id=f"gap:{candidate.stable_id()}",
+        id=_gap_id(candidate),
         review_id=candidate.review_id,
         check=candidate.check,
         text=candidate.cited_text or candidate.explanation,

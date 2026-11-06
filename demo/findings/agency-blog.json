@@ -243,11 +243,11 @@
         "R-CLAIM-01 §4.1",
         "F-002"
       ],
-      "model": "claude-haiku-5-5"
+      "model": "claude-haiku-4-5"
     },
     "ai_generated": true,
     "models_used": [
-      "claude-haiku-5-5",
+      "claude-haiku-4-5",
       "gpt-6-luna"
     ],
     "fix_available": true,
@@ -291,11 +291,11 @@
       "sources": [
         "R-TONE-02 §2.2"
       ],
-      "model": "claude-haiku-5-5"
+      "model": "claude-haiku-4-5"
     },
     "ai_generated": true,
     "models_used": [
-      "claude-haiku-5-5"
+      "claude-haiku-4-5"
     ],
     "fix_available": false,
     "status": "open"

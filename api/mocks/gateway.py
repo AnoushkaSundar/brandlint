@@ -13,7 +13,7 @@ CODENAME_TOKEN = "[PRODUCT_1]"
 @router.get("/reviews/{review_id}/disclosure")
 def disclosure(review_id: str) -> dict:
     return {
-        "models": ["claude-haiku-5-5", "gpt-6-luna"],
+        "models": ["claude-haiku-4-5", "gpt-6-luna"],
         "masked": {"PRODUCT": 1},
         "routes": ["cloud"],
     }

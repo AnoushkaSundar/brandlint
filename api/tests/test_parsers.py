@@ -128,3 +128,12 @@ def test_image_ocr_block_is_flagged():
     assert block.kind == BlockKind.image
     assert block.style.from_ocr is True
     assert block.image_ref == "banner.png"
+
+
+def test_crlf_text_splits_into_paragraphs_like_lf():
+    from app.engine.parsers import parse_text
+
+    crlf = parse_text("First paragraph here.\r\n\r\nSecond paragraph here.")
+    lf = parse_text("First paragraph here.\n\nSecond paragraph here.")
+    assert [b.text for b in crlf.blocks] == [b.text for b in lf.blocks]
+    assert len(crlf.blocks) == 2

@@ -271,3 +271,31 @@ def test_banner_has_the_planted_problems():
     banner = image_module.open(DEMO / "pieces" / "banner.png").convert("RGB")
     assert banner.size == (1200, 400)
     assert banner.getpixel((1190, 200)) == (0xFF, 0x2E, 0xC4)
+
+
+def test_terms_cite_their_governing_rule():
+    terms = {term["id"]: term for term in load("brand", "terms.json")}
+
+    assert terms["T-001"]["rule_id"] == "R-TERM-02"
+    assert terms["T-002"]["rule_id"] == "R-TERM-03"
+    assert terms["T-003"]["rule_id"] == "R-TERM-01"
+    for term in terms.values():
+        if "rule_id" in term:
+            rule = RULES[term["rule_id"]]
+            assert rule["status"] == "approved"
+            assert term["rule_version"] == rule["version"]
+
+
+def test_must_include_rules_say_exactly_what_to_look_for():
+    assert RULES["R-REQ-01"]["required_text"] == "Results vary by organisation."
+    assert RULES["R-REQ-02"]["required_text"] == "tarnhollow.example"
+    for rule in RULES.values():
+        assert ("required_text" in rule) == (rule["type"] == "must_include")
+
+
+def test_the_blog_meets_its_required_text_and_the_post_does_not():
+    blog = " ".join(chunks_for("agency-blog").values())
+    post = " ".join(chunks_for("linkedin-post").values())
+
+    assert RULES["R-REQ-02"]["required_text"] in blog
+    assert RULES["R-REQ-01"]["required_text"] not in post

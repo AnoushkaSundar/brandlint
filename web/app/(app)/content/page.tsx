@@ -1,12 +1,9 @@
-import {
-  PlaceholderPage,
-  placeholderMetadata,
-} from "@/components/placeholder-page";
+import type { Metadata } from "next";
 
-const HREF = "/content";
+import { ContentList } from "@/components/content-list";
 
-export const metadata = placeholderMetadata(HREF);
+export const metadata: Metadata = { title: "Content" };
 
 export default function Page() {
-  return <PlaceholderPage href={HREF} />;
+  return <ContentList />;
 }
