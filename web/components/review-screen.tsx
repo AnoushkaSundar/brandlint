@@ -3,38 +3,22 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { ReviewDocument, SEVERITY_MARK } from "@/components/review-document";
+import { FindingCard } from "@/components/finding-card";
+import type { FixDecision } from "@/components/fix-panel";
+import { ReviewDocument } from "@/components/review-document";
+import { getRulebook } from "@/lib/admin";
 import { ApiError } from "@/lib/api";
 import {
   type ContentDetail,
   getContent,
   versionFilePath,
 } from "@/lib/content";
-import type { CheckType, Finding, Severity } from "@/lib/contracts";
+import type { Finding } from "@/lib/contracts";
 import { type Chunk, getChunks, streamFindings } from "@/lib/engineClient";
+import { trackProgress } from "@/lib/findingLabels";
 import { sortFindings } from "@/lib/highlights";
-import { cn } from "@/lib/utils";
 
 type StreamState = "streaming" | "done" | "error";
-
-const SEVERITY_LABELS: Record<Severity, string> = {
-  low: "Low",
-  medium: "Medium",
-  high: "High",
-  critical: "Critical",
-};
-
-const CHECK_LABELS: Record<CheckType, string> = {
-  tone: "Tone",
-  terminology: "Terminology",
-  messaging: "Messaging",
-  claim: "Claim",
-  visual: "Visual",
-  accessibility: "Accessibility",
-  hidden_content: "Hidden content",
-  required_element: "Required element",
-  tone_drift: "Tone drift",
-};
 
 function findingCount(count: number): string {
   return count === 1 ? "1 finding" : `${count} findings`;
@@ -44,12 +28,18 @@ function Findings({
   findings,
   streamState,
   selectedId,
+  clauseRefs,
+  decisions,
   onSelect,
+  onDecide,
 }: {
   findings: readonly Finding[];
   streamState: StreamState;
   selectedId: string | null;
+  clauseRefs: ReadonlyMap<string, string>;
+  decisions: ReadonlyMap<string, FixDecision>;
   onSelect: (findingId: string) => void;
+  onDecide: (findingId: string, action: FixDecision, text: string) => void;
 }) {
   return (
     <>
@@ -63,6 +53,17 @@ function Findings({
             : `Checking… ${findingCount(findings.length)} so far`}
         </p>
       </div>
+
+      <ul aria-label="Progress" className="mt-2 flex flex-wrap gap-x-4 text-sm">
+        {trackProgress(findings, streamState === "done").map((track) => (
+          <li key={track.label}>
+            {track.label}: {track.count}
+            <span className="text-muted-foreground">
+              {track.done ? ", done" : ", checking"}
+            </span>
+          </li>
+        ))}
+      </ul>
 
       {streamState === "error" && (
         <p
@@ -80,40 +81,18 @@ function Findings({
       )}
 
       <ol className="mt-3 flex flex-col gap-2">
-        {findings.map((finding) => {
-          const selected = finding.id === selectedId;
-          return (
-            <li key={finding.id}>
-              <button
-                type="button"
-                aria-pressed={selected}
-                onClick={() => onSelect(finding.id)}
-                className={cn(
-                  "w-full cursor-pointer rounded-lg border p-3 text-left text-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
-                  selected && "border-ring bg-accent",
-                )}
-              >
-                <span className="flex flex-wrap items-center gap-2">
-                  <span
-                    className={cn(
-                      "rounded-sm px-1.5 font-medium text-foreground underline decoration-2 underline-offset-2",
-                      SEVERITY_MARK[finding.severity],
-                    )}
-                  >
-                    {SEVERITY_LABELS[finding.severity]}
-                  </span>
-                  <span className="text-muted-foreground">
-                    {CHECK_LABELS[finding.check]}
-                  </span>
-                  {finding.verdict === "UNSURE" && (
-                    <span className="font-medium">Needs a reviewer</span>
-                  )}
-                </span>
-                <span className="mt-1 block">{finding.explanation}</span>
-              </button>
-            </li>
-          );
-        })}
+        {findings.map((finding) => (
+          <li key={finding.id}>
+            <FindingCard
+              finding={finding}
+              selected={finding.id === selectedId}
+              clauseRefs={clauseRefs}
+              decision={decisions.get(finding.id)}
+              onSelect={onSelect}
+              onDecide={onDecide}
+            />
+          </li>
+        ))}
       </ol>
     </>
   );
@@ -125,6 +104,12 @@ export function ReviewScreen({ id }: { id: string }) {
   const [received, setReceived] = useState<Finding[]>([]);
   const [streamState, setStreamState] = useState<StreamState>("streaming");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [clauseRefs, setClauseRefs] = useState<ReadonlyMap<string, string>>(
+    new Map(),
+  );
+  const [decisions, setDecisions] = useState<
+    ReadonlyMap<string, FixDecision>
+  >(new Map());
   const [error, setError] = useState<string | null>(null);
   const documentRef = useRef<HTMLDivElement>(null);
 
@@ -144,6 +129,24 @@ export function ReviewScreen({ id }: { id: string }) {
   }, [id]);
 
   const reviewId = content?.latest_review?.engine_review_id;
+  const rulebookVersion = content?.latest_review?.rulebook_version;
+
+  useEffect(() => {
+    if (!rulebookVersion) return;
+    let current = true;
+    // Clause numbers only add detail: every card still quotes its source without them.
+    getRulebook(rulebookVersion).then(
+      (rules) => {
+        if (current) {
+          setClauseRefs(new Map(rules.map((rule) => [rule.id, rule.clause_ref])));
+        }
+      },
+      () => {},
+    );
+    return () => {
+      current = false;
+    };
+  }, [rulebookVersion]);
 
   useEffect(() => {
     if (!reviewId) return;
@@ -189,6 +192,10 @@ export function ReviewScreen({ id }: { id: string }) {
     documentRef.current
       ?.querySelector(`mark[data-finding~="${CSS.escape(findingId)}"]`)
       ?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }
+
+  function decideFix(findingId: string, action: FixDecision) {
+    setDecisions((existing) => new Map(existing).set(findingId, action));
   }
 
   const backLink = (
@@ -278,7 +285,10 @@ export function ReviewScreen({ id }: { id: string }) {
             findings={findings}
             streamState={streamState}
             selectedId={selectedId}
+            clauseRefs={clauseRefs}
+            decisions={decisions}
             onSelect={selectFinding}
+            onDecide={decideFix}
           />
         </section>
       </div>
