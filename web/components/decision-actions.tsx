@@ -59,13 +59,17 @@ export function DecisionActions({
   const [busy, setBusy] = useState(false);
 
   const actions = status === "fix_edited" ? FIX_ACTIONS : REASON_ACTIONS;
-  const form = actions.find(({ action }) => action === opened);
+  const form = actions.find(
+    ({ action }) => action === opened && allowed.includes(action),
+  );
   if (form) {
     return (
       <ReasonForm
         label={form.label}
         submitLabel={form.submit}
-        onSubmit={(reason) => onDecide({ action: form.action, reason })}
+        onSubmit={(reason) =>
+          onDecide({ action: form.action, reason }).then(() => setOpened(null))
+        }
         onCancel={() => setOpened(null)}
       />
     );

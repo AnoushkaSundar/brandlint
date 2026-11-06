@@ -1,6 +1,7 @@
 from datetime import datetime
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -14,6 +15,7 @@ from app.auth.models import User
 from app.clients import engine as engine_client
 from app.content.access import latest_review, readable_content
 from app.content.models import Content, ContentVersion
+from app.content.schemas import ContentOut
 from app.contracts import (
     ContentState,
     Decision,
@@ -23,6 +25,7 @@ from app.contracts import (
     Role,
 )
 from app.workflow import fixes
+from app.workflow.comments import add_comment, list_comments
 from app.workflow.decisions import (
     FindingProgress,
     allowed_actions,
@@ -31,14 +34,21 @@ from app.workflow.decisions import (
     record_decision,
     refused_overrides,
 )
+from app.workflow.history import audit_page, content_history
 from app.workflow.machine import ReviewFacts, available_moves, make_move, needs_legal
 from app.workflow.models import Review
+from app.workflow.queue import reviewer_queue
 from app.workflow.schemas import (
+    AuditPage,
     Board,
+    CommentIn,
+    CommentOut,
     DecisionIn,
     FindingStanding,
     FixRequest,
+    History,
     MoveOut,
+    Queue,
     TransitionIn,
 )
 
@@ -164,6 +174,7 @@ def decide(
         action=body.action,
         reason=body.reason,
         fix_text=body.fix_text,
+        attempt=body.attempt,
     )
     session.commit()
     return _board(session, content, user)
@@ -171,15 +182,10 @@ def decide(
 
 def _fixed_text(review: Review, facts: ReviewFacts) -> str | None:
     """The text with every approved fix in place, or None when there are no fixes."""
-    if not any(item.fix_text for item in facts.progress.values()):
+    if all(item.fix_text is None for item in facts.progress.values()):
         return None
     chunks = engine_client.list_chunks(review.engine_review_id)
-    try:
-        return fixes.text_with_fixes(chunks, facts.findings, facts.progress)
-    except fixes.FixesOverlap:
-        raise HTTPException(
-            status.HTTP_409_CONFLICT, "Two saved fixes overlap. Send this back."
-        ) from None
+    return fixes.text_with_fixes(chunks, facts.findings, facts.progress)
 
 
 @router.post("/content/{content_id}/transitions", response_model=Board)
@@ -190,9 +196,6 @@ def transition(
     review = latest_review(session, content.id)
     facts = _facts(session, content, review)
 
-    # Sign-off comes first, so a rejected edit never reaches a version.
-    approving = body.to is ContentState.manager_approval
-    fixed_text = _fixed_text(review, facts) if review and approving else None
     make_move(
         session,
         content=content,
@@ -202,8 +205,17 @@ def transition(
         reason=body.reason,
         rulebook_version=review.rulebook_version if review else None,
     )
-    if fixed_text is not None:
-        fixes.save_fixed_version(session, content, fixed_text, user)
+    # Sign-off comes first, so a rejected edit never reaches a version.
+    if review and body.to is ContentState.manager_approval:
+        try:
+            fixed_text = _fixed_text(review, facts)
+        except fixes.FixCannotApply:
+            session.rollback()
+            raise HTTPException(
+                status.HTTP_409_CONFLICT, "A saved fix can't be applied. Send this back."
+            ) from None
+        if fixed_text is not None:
+            fixes.save_fixed_version(session, content, fixed_text, user)
     session.commit()
     return _board(session, content, user)
 
@@ -217,3 +229,71 @@ def transition(
 )
 def get_decisions(session: SessionDep, since: datetime | None = None) -> list:
     return list(list_decisions(session, since))
+
+
+@router.get(
+    "/queue",
+    response_model=Queue,
+    dependencies=[Depends(require_roles(Role.reviewer))],
+)
+def get_queue(session: SessionDep) -> Queue:
+    ready = session.scalars(
+        select(Content)
+        .where(Content.state == ContentState.reviewer_check.value)
+        .order_by(Content.created_at)
+    )
+    items, unavailable = reviewer_queue(session)
+    return Queue(
+        items=items,
+        ready=[ContentOut.model_validate(content) for content in ready],
+        unavailable=unavailable,
+    )
+
+
+@router.get("/content/{content_id}/comments", response_model=list[CommentOut])
+def get_comments(
+    content_id: str, user: CurrentUser, session: SessionDep
+) -> list[CommentOut]:
+    return list_comments(session, readable_content(content_id, user, session))
+
+
+@router.post(
+    "/content/{content_id}/comments",
+    response_model=list[CommentOut],
+    status_code=status.HTTP_201_CREATED,
+)
+def post_comment(
+    content_id: str, body: CommentIn, user: CurrentUser, session: SessionDep
+) -> list[CommentOut]:
+    content = readable_content(content_id, user, session)
+    add_comment(session, content, user, body)
+    session.commit()
+    return list_comments(session, content)
+
+
+@router.get("/content/{content_id}/history", response_model=History)
+def get_history(content_id: str, user: CurrentUser, session: SessionDep) -> History:
+    return content_history(session, readable_content(content_id, user, session))
+
+
+@router.get(
+    "/audit",
+    response_model=AuditPage,
+    dependencies=[Depends(require_roles(Role.admin, Role.manager))],
+)
+def get_audit(
+    session: SessionDep,
+    action: str | None = None,
+    target_type: str | None = None,
+    role: str | None = None,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> AuditPage:
+    return audit_page(
+        session,
+        action=action,
+        target_type=target_type,
+        role=role,
+        limit=limit,
+        offset=offset,
+    )

@@ -1,12 +1,8 @@
-import {
-  PlaceholderPage,
-  placeholderMetadata,
-} from "@/components/placeholder-page";
+import { AuditScreen } from "@/components/audit-screen";
+import { placeholderMetadata } from "@/components/placeholder-page";
 
-const HREF = "/audit";
-
-export const metadata = placeholderMetadata(HREF);
+export const metadata = placeholderMetadata("/audit");
 
 export default function Page() {
-  return <PlaceholderPage href={HREF} />;
+  return <AuditScreen />;
 }
