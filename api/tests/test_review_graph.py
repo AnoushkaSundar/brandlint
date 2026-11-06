@@ -227,3 +227,34 @@ def test_facts_are_known_to_the_critic():
     chunks = [chunk("Plain words here")]
     findings, gaps, _ = review(chunks, passing_model(chunks), ctx)
     assert (findings, gaps) == ([], [])
+
+
+def _codename_fact():
+    return Fact(
+        id="F-010", statement="Bluewren is planned for Q2 2027.", value="Bluewren",
+        source_doc="d", owner="o", data_class="confidential", version=1,
+    )
+
+
+def test_codename_with_no_brand_rule_stays_a_finding_not_a_gap():
+    chunks = [chunk("Meet Bluewren today.")]
+    ctx = context()
+    ctx.facts = [_codename_fact()]
+    findings, gaps, _ = review(chunks, passing_model(chunks), ctx)
+    assert [f.rule_id for f in findings] == ["SEC-CONFIDENTIAL"]
+    assert gaps == []
+
+
+def test_codename_finding_cites_the_brand_rule_and_hides_the_fact():
+    rule = Rule(
+        id="R-CLAIM-05", version=1, type="deterministic",
+        text="Never mention unreleased products or internal codenames.",
+        clause_ref="§4.5", severity="critical", channel_scope=[], status="approved",
+    )
+    chunks = [chunk("Meet Bluewren today.")]
+    ctx = context(rules=(TONE, TERM_RULE, rule))
+    ctx.facts = [_codename_fact()]
+    findings, gaps, _ = review(chunks, passing_model(chunks), ctx)
+    assert [f.rule_id for f in findings] == ["R-CLAIM-05"]
+    assert gaps == []
+    assert "Q2 2027" not in findings[0].model_dump_json()
