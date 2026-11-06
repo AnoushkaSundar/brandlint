@@ -35,6 +35,38 @@ const MANIFEST_LABELS: Record<string, string> = {
   as_of: "Checked as of",
 };
 
+function Swatch({ colour, label }: { colour: string; label: string }) {
+  return (
+    <span className="inline-flex items-center gap-1">
+      <span
+        aria-hidden="true"
+        className="inline-block size-4 rounded-sm border"
+        style={{ backgroundColor: colour }}
+      />
+      {label} {colour}
+    </span>
+  );
+}
+
+/** The failing pair, its ratio and the palette colour that passes. */
+function ContrastPreview({ finding }: { finding: Finding }) {
+  const step = finding.trace.steps.find(
+    (item) => item.tool === "contrast_preview",
+  );
+  const pair = step?.input_summary.match(/^(#\w{6}) on (#\w{6})$/);
+  if (!step || !pair) return null;
+  const [result, suggestion] = step.output_summary.split(", try ");
+
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+      <Swatch colour={pair[1]} label="Text" />
+      <Swatch colour={pair[2]} label="Background" />
+      <span>{result}</span>
+      {suggestion && <Swatch colour={suggestion} label="Try" />}
+    </div>
+  );
+}
+
 function Tag({ children }: { children: React.ReactNode }) {
   return (
     <span className="rounded-sm border px-1.5 text-xs text-muted-foreground">
@@ -239,6 +271,8 @@ export function FindingCard({
       {isDocumentLevel(finding) && (
         <p className="text-muted-foreground">Applies to the whole document.</p>
       )}
+
+      <ContrastPreview finding={finding} />
 
       <figure className="border-l-2 pl-3">
         <blockquote>{finding.cited_text}</blockquote>
