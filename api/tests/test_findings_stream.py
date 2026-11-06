@@ -4,14 +4,17 @@ from __future__ import annotations
 
 import threading
 import time
+from datetime import UTC, datetime
 
 import pytest
 
 pytest.importorskip("langgraph")
 
+from app.admin import models as admin_models
+from app.admin.seed import seed_brand
 from app.auth.dependencies import current_user
 from app.clients import engine as engine_client
-from app.contracts import ContentSource, Rule, Term
+from app.contracts import ContentSource, Gap, Rule, Term
 from app.db import Base, get_session
 from app.engine import graph as review_graph
 from app.engine import models, reviews
@@ -207,12 +210,109 @@ def test_pasted_text_is_text():
     assert reviews.formats(source) == ("Hello", "text", "text")
 
 
-def test_demo_brand_loads_approved_rules_only():
-    brand = load_brand(1)
+@pytest.fixture()
+def seeded(session_factory):
+    engine = session_factory.kw["bind"]
+    Base.metadata.create_all(
+        engine,
+        tables=[
+            admin_models.Rule.__table__,
+            admin_models.Fact.__table__,
+            admin_models.Term.__table__,
+            admin_models.Asset.__table__,
+            admin_models.Gap.__table__,
+        ],
+    )
+    with session_factory() as session:
+        seed_brand(session)
+    return session_factory
+
+
+def test_brand_comes_from_the_admin_functions(seeded):
+    with seeded() as session:
+        brand = load_brand(session, 1)
     ids = {rule.id for rule in brand.rules}
-    assert "R-TERM-04" not in ids  # a draft in the demo rulebook
+    assert "R-TERM-04" not in ids  # A draft in the demo rulebook.
     assert "R-TONE-01" in ids
     assert brand.facts and brand.terms
+
+
+def test_a_real_review_finds_the_planted_term_and_disclaimer(seeded):
+    source = ContentSource(data_class="public", text="Tarnhollow Onramp is here.")
+    review_id = reviews.start_review(
+        "cv1", "linkedin", 1, source, classify=flagging_model, session_factory=seeded,
+    )
+    run = finished_run(review_id)
+    assert names(run)[-1] == "done"
+    rules = {payload["rule_id"] for name, payload in run.events if name == "finding"}
+    assert {"R-TERM-02", "R-REQ-01"} <= rules
+
+
+def test_an_empty_rulebook_fails_instead_of_passing(session_factory):
+    Base.metadata.create_all(
+        session_factory.kw["bind"],
+        tables=[
+            admin_models.Rule.__table__,
+            admin_models.Fact.__table__,
+            admin_models.Term.__table__,
+        ],
+    )
+    review_id = reviews.start_review(
+        "cv1", "blog", 1, ContentSource(data_class="public", text="Hello"),
+        classify=flagging_model, session_factory=session_factory,
+    )
+    assert names(finished_run(review_id)) == ["error"]
+
+
+def test_gaps_reach_the_gap_log_once(seeded):
+    gap = Gap(
+        id="gap:1", review_id="rev", check="tone", text="t", explanation="e",
+        created_at=datetime(2026, 11, 6, tzinfo=UTC),
+    )
+    sink = reviews._gap_log(seeded)
+    sink([gap])
+    sink([gap])
+    with seeded() as session:
+        assert session.query(admin_models.Gap).count() == 1
+
+
+def test_status_follows_a_review_to_done(session_factory):
+    release = threading.Event()
+
+    def slow_model(*args):
+        assert release.wait(TIMEOUT_S)
+        return flagging_model(*args)
+
+    review_id = start(session_factory, classify=slow_model)
+    with session_factory() as session:
+        assert reviews.review_status(review_id, session) == "running"
+        release.set()
+        finished_run(review_id)
+        assert reviews.review_status(review_id, session) == "done"
+
+
+def test_status_reports_a_failed_review(session_factory):
+    source = ContentSource(
+        data_class="public", file_name="clip.mp4", file_bytes=b"data"
+    )
+    review_id = start(session_factory, source)
+    finished_run(review_id)
+    with session_factory() as session:
+        assert reviews.review_status(review_id, session) == "failed"
+
+
+def test_status_after_a_restart(session_factory):
+    review_id = start(session_factory)
+    finished_run(review_id)
+    reviews._runs.pop(review_id)
+    with session_factory() as session:
+        assert reviews.review_status(review_id, session) == "done"
+        assert reviews.review_status("rev-lost", session) == "unknown"
+
+
+def test_the_client_reports_mock_reviews_as_done(monkeypatch):
+    monkeypatch.setenv("USE_MOCK_ENGINE", "true")
+    assert engine_client.review_status("rev-demo-banner", None) == "done"
 
 
 def client_for(session_factory, monkeypatch, *, signed_in=True) -> TestClient:

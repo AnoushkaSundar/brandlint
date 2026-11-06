@@ -20,6 +20,7 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.admin.gaps import save_gaps
 from app.contracts import ContentSource, Finding, Gap
 from app.db import get_sessionmaker
 from app.engine import graph, models
@@ -43,9 +44,21 @@ BrandLoader = Callable[[int], BrandData]
 SessionFactory = Callable[[], Session]
 
 
-def log_gaps(gaps: list[Gap]) -> None:
-    """Stands in for POST /admin/gaps until the product's gap log exists."""
-    logger.warning("%d guideline gaps have no gap log to go to yet", len(gaps))
+def _gap_log(session_factory: SessionFactory) -> GapSink:
+    def sink(gaps: list[Gap]) -> None:
+        with session_factory() as session:
+            save_gaps(session, gaps)
+            session.commit()
+
+    return sink
+
+
+def _rulebook(session_factory: SessionFactory) -> BrandLoader:
+    def loader(rulebook_version: int) -> BrandData:
+        with session_factory() as session:
+            return load_brand(session, rulebook_version)
+
+    return loader
 
 
 @dataclass
@@ -151,8 +164,8 @@ def start_review(
     *,
     classify: graph.ClassifyFn | None = None,
     session_factory: SessionFactory | None = None,
-    brand_loader: BrandLoader = load_brand,
-    gap_sink: GapSink = log_gaps,
+    brand_loader: BrandLoader | None = None,
+    gap_sink: GapSink | None = None,
 ) -> str:
     session_factory = session_factory or get_sessionmaker()
     run = ReviewRun(
@@ -167,14 +180,28 @@ def start_review(
         source,
         classify or graph.gateway_classify(session_factory),
         session_factory,
-        brand_loader,
-        gap_sink,
+        brand_loader or _rulebook(session_factory),
+        gap_sink or _gap_log(session_factory),
     )
     return run.review_id
 
 
 def get_run(review_id: str) -> ReviewRun | None:
     return _runs.get(review_id)
+
+
+def review_status(review_id: str, session: Session) -> str:
+    """running, done, failed or unknown. Only `done` means every check finished.
+
+    A review that was running when the process stopped comes back as unknown,
+    because the findings saved so far can't show that the checks completed.
+    """
+    run = get_run(review_id)
+    if run is not None:
+        if not run.finished.is_set():
+            return "running"
+        return "done" if run.events[-1][0] == "done" else "failed"
+    return "done" if stored_events(review_id, session) else "unknown"
 
 
 def stored_events(review_id: str, session: Session) -> list[tuple[str, dict]] | None:
