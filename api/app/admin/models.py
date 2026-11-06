@@ -74,7 +74,8 @@ class IngestJob(Base):
 class Gap(Base):
     __tablename__ = "gaps"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    # The critic builds ids from finding ids, which are longer than a UUID.
+    id: Mapped[str] = mapped_column(String(255), primary_key=True, default=new_id)
     review_id: Mapped[str] = mapped_column(String(64), index=True)
     check: Mapped[str] = mapped_column(String(32))
     text: Mapped[str] = mapped_column(Text)
