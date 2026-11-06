@@ -1,6 +1,9 @@
-"""MUST_INCLUDE required elements per channel. A must_include rule's `text` is
-the element that must appear in the content; if it's absent for the channel in
-scope, flag it (document-level) and cite the rule."""
+"""MUST_INCLUDE required elements per channel. Looks for the rule's
+``required_text`` (the exact phrase that must appear), not the rule sentence; if
+it's absent for a channel in scope, flag it (document-level) and cite the rule.
+A must_include rule with no ``required_text`` is skipped (nothing concrete to
+require), so a post carrying the real phrase is no longer falsely flagged.
+"""
 
 from __future__ import annotations
 
@@ -26,17 +29,19 @@ def check_required_elements(
             continue
         if rule.channel_scope and ctx.channel not in rule.channel_scope:
             continue
-        required = _norm(rule.text)
-        if required and required not in haystack:
+        required = rule.required_text
+        if not required:
+            continue
+        if _norm(required) not in haystack:
             findings.append(
                 make_finding(
                     ctx,
                     check=CheckType.required_element,
                     severity=rule.severity,
-                    cited_text=rule.text,
+                    cited_text=required,
                     explanation=(
                         f"Required element for '{ctx.channel}' is missing: "
-                        f"\"{rule.text}\"."
+                        f'"{required}".'
                     ),
                     anchor=rule.id,
                     unit_type="document",
