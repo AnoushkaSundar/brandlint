@@ -285,7 +285,10 @@ def test_a_reviewer_cannot_edit(client_for):
     assert response.status_code == 403
 
 
-@pytest.mark.parametrize("state", ["published", "rejected"])
+@pytest.mark.parametrize(
+    "state",
+    ["reviewer_check", "manager_approval", "legal_signoff", "published", "rejected"],
+)
 def test_locked_content_cannot_be_edited(client_for, session, state):
     client = client_for()
     content_id = create(client).json()["id"]
@@ -491,3 +494,27 @@ def test_a_missing_upload_is_refused_and_changes_nothing(client_for, session, mo
     assert calls == []
     assert client.get(f"/content/{content_id}").json()["state"] == "draft"
     assert session.scalars(select(Review)).first() is None
+
+
+def test_reviewing_the_same_text_again_is_refused(client_for, session):
+    client = client_for()
+    content_id = create(client).json()["id"]
+    client.post(f"/content/{content_id}/reviews")
+    session.get(Content, content_id).state = "resolving"
+    session.commit()
+
+    response = client.post(f"/content/{content_id}/reviews")
+
+    assert response.status_code == 409
+    assert "new version" in response.json()["detail"]
+
+
+def test_a_new_version_can_be_reviewed_from_resolving(client_for, session):
+    client = client_for()
+    content_id = create(client).json()["id"]
+    client.post(f"/content/{content_id}/reviews")
+    session.get(Content, content_id).state = "resolving"
+    session.commit()
+    client.post(f"/content/{content_id}/versions", data={"text": "Better words"})
+
+    assert client.post(f"/content/{content_id}/reviews").status_code == 201

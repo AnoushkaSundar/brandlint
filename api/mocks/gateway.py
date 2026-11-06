@@ -1,5 +1,7 @@
 """Stands in for /gateway and llm.call until the real AI gateway lands."""
 
+import re
+
 from fastapi import APIRouter
 
 from mocks import data
@@ -25,8 +27,25 @@ def masking_preview(review_id: str) -> dict:
     return {"original": original, "sent": original.replace(CODENAME, CODENAME_TOKEN)}
 
 
-def _verdicts(rule_ids: list[str]) -> dict:
+_MATERIAL = re.compile(r"<<<(MATERIAL-\w+)\n(.*)\n\1>>>", re.DOTALL)
+_WORD = re.compile(r"[^\W_]+(?:['’-][^\W_]+)*")
+
+
+def _control_answer(payload: dict) -> str:
+    """Answers the question the Language agent uses to check a model read the text."""
+    messages = payload.get("messages") or [{}]
+    prompt = str(messages[-1].get("content", ""))
+    material = _MATERIAL.search(prompt)
+    words = _WORD.findall(material.group(2)) if material else []
+    if not words:
+        return ""
+    first = "Control question: What is the first word" in prompt
+    return words[0] if first else words[-1]
+
+
+def _verdicts(rule_ids: list[str], payload: dict) -> dict:
     return {
+        "control_answer": _control_answer(payload),
         "verdicts": [
             {
                 "rule_id": rule_id,
@@ -55,5 +74,5 @@ def llm_call(
     if purpose == "ingest":
         return _draft_rules()
     if purpose in ("visual", "classify"):
-        return _verdicts(rule_ids)
+        return _verdicts(rule_ids, payload)
     raise ValueError(f"The mock llm.call has no response for purpose {purpose!r}")

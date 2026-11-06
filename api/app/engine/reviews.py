@@ -21,7 +21,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.admin.gaps import save_gaps
-from app.contracts import ContentSource, Finding, Gap
+from app.contracts import Chunk, ContentSource, Finding, Gap
 from app.db import get_sessionmaker
 from app.engine import graph, models
 from app.engine.brand import BrandData, load_brand
@@ -245,3 +245,36 @@ def stored_events(review_id: str, session: Session) -> list[tuple[str, dict]] | 
         for row in rows
     ]
     return [*events, ("done", {"count": len(events)})]
+
+
+def list_findings(review_id: str, session: Session) -> list[Finding]:
+    """The findings so far. Saved rows are the critic's final word once a review
+    has finished; while it runs, or if it failed, these are what has been streamed."""
+    run = get_run(review_id)
+    stored = None
+    if run is None or run.finished.is_set():
+        stored = stored_events(review_id, session)
+    events = stored or (run.events if run else [])
+    return [Finding.model_validate(body) for name, body in events if name == "finding"]
+
+
+def list_chunks(review_id: str, session: Session) -> list[Chunk]:
+    run = get_run(review_id)
+    if run is not None and run.chunks is not None:
+        return [Chunk.model_validate(chunk.as_dict()) for chunk in run.chunks]
+    version = session.scalar(
+        select(models.Finding.content_version_id)
+        .where(models.Finding.review_id == review_id)
+        .limit(1)
+    )
+    if version is None:
+        return []
+    rows = session.scalars(
+        select(models.Chunk)
+        .where(models.Chunk.content_version_id == version)
+        .order_by(models.Chunk.ordinal)
+    ).all()
+    return [
+        Chunk.model_validate({name: getattr(row, name) for name in Chunk.model_fields})
+        for row in rows
+    ]

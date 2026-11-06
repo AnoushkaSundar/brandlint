@@ -1,15 +1,15 @@
 import { apiFetch, apiUrl } from "@/lib/api";
-import type { DataClass, Finding } from "@/lib/contracts";
+import type {
+  Chunk,
+  Finding,
+  Precedent,
+  Verdict,
+} from "@/lib/contracts";
 
-export type Chunk = {
-  id: string;
-  content_version_id: string;
-  ordinal: number;
-  kind: "heading" | "paragraph" | "image";
-  text: string;
-  content_hash: string;
-  data_class: DataClass;
-  style?: Record<string, unknown> | null;
+export type ReplayResult = {
+  identical: boolean;
+  verdict: Verdict;
+  manifest?: Record<string, unknown> | null;
 };
 
 type StreamHandlers = {
@@ -20,6 +20,18 @@ type StreamHandlers = {
 
 export function getChunks(reviewId: string): Promise<Chunk[]> {
   return apiFetch<Chunk[]>(`/engine/reviews/${reviewId}/chunks`);
+}
+
+export function replayVerdict(findingId: string): Promise<ReplayResult> {
+  return apiFetch<ReplayResult>(`/engine/verdicts/${findingId}/replay`, {
+    method: "POST",
+  });
+}
+
+export function getPrecedents(findingId: string): Promise<Precedent[]> {
+  return apiFetch<Precedent[]>(
+    `/memory/precedents?finding_id=${encodeURIComponent(findingId)}`,
+  );
 }
 
 /** Opens the findings stream and returns a function that closes it. */

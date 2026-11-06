@@ -1,7 +1,7 @@
 """alapan: token_vault table
 
 Revision ID: alapan_0003_token_vault
-Revises: anoushka_0004
+Revises: anoushka_0005
 Create Date: 2026-11-06
 
 Chained onto the product migrations so main keeps a single Alembic head.
@@ -14,7 +14,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "alapan_0003_token_vault"
-down_revision: str | None = "anoushka_0004"
+down_revision: str | None = "anoushka_0005"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
