@@ -31,7 +31,14 @@ Source = Annotated[str, Form(min_length=1, max_length=255)]
 PastedText = Annotated[str, Form()]
 Upload = Annotated[UploadFile | None, File()]
 
-LOCKED_STATES = {ContentState.published.value, ContentState.rejected.value}
+# Once a piece has been submitted, new text would skip the review it's in.
+LOCKED_STATES = {
+    ContentState.reviewer_check.value,
+    ContentState.manager_approval.value,
+    ContentState.legal_signoff.value,
+    ContentState.published.value,
+    ContentState.rejected.value,
+}
 REVIEWABLE_STATES = {
     ContentState.draft.value,
     ContentState.ai_review.value,
@@ -223,6 +230,16 @@ def start_review(content_id: str, user: Creator, session: SessionDep) -> Review:
             status.HTTP_409_CONFLICT, "This content can't be reviewed in its current state."
         )
     latest = _versions(session, content_id)[0]
+    previous = latest_review(session, content_id)
+    # Reviewing the same text again would only wipe the decisions made on it.
+    if (
+        content.state == ContentState.resolving.value
+        and previous is not None
+        and previous.content_version_id == latest.id
+    ):
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "Add a new version to review it again."
+        )
     source = _content_source(content, latest)
     rulebook_version = current_rulebook_version()
     review = Review(

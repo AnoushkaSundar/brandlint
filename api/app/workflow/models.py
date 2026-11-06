@@ -50,10 +50,29 @@ class Decision(Base):
     actor_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
     role: Mapped[str] = mapped_column(String(32))
     action: Mapped[str] = mapped_column(String(32))
+    # Where this left the finding. The same action can end differently.
+    status: Mapped[str] = mapped_column(String(32))
     reason: Mapped[str | None] = mapped_column(Text)
     fix_text: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, index=True
+    )
+
+
+class FixOffer(Base):
+    """What the engine suggested. Accepting a fix uses this, never the request."""
+
+    __tablename__ = "fix_offers"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    review_id: Mapped[str] = mapped_column(ForeignKey("reviews.id"), index=True)
+    finding_id: Mapped[str] = mapped_column(String(255), index=True)
+    attempt: Mapped[int] = mapped_column(Integer)
+    original: Mapped[str] = mapped_column(Text)
+    suggested: Mapped[str] = mapped_column(Text)
+    diff: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now
     )
 
 

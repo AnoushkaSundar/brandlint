@@ -11,10 +11,10 @@ from app.auth.router import router as auth_router
 from app.auth.security import SESSION_COOKIE, create_token, hash_password
 from app.content.models import Content, ContentVersion
 from app.content.router import router as content_router
-from app.contracts import Chunk, Finding, FindingStatus, Role
+from app.contracts import Chunk, Finding, FindingStatus, Role, Span
 from app.db import Base, get_session
 from app.workflow.decisions import FindingProgress
-from app.workflow.fixes import text_with_fixes
+from app.workflow.fixes import FixesOverlap, text_with_fixes
 from app.workflow.models import AuditLog, Decision, ReviewStateLog
 from app.workflow.router import router as workflow_router
 from fastapi import FastAPI
@@ -127,6 +127,18 @@ def decide(client, content_id, finding_id, action, reason=None, fix_text=None):
     )
 
 
+def offer(client, content_id, finding_id, again=False):
+    return client.post(
+        f"/workflow/content/{content_id}/findings/{finding_id}/fix",
+        json={"again": again},
+    )
+
+
+def accept(client, content_id, finding_id):
+    assert offer(client, content_id, finding_id).status_code == 200
+    return decide(client, content_id, finding_id, "accept_fix")
+
+
 def board(client, content_id):
     return client.get(f"/workflow/content/{content_id}/board").json()
 
@@ -142,18 +154,18 @@ def standing(client, content_id, finding_id):
 def clear_everything(creator, reviewer, content_id):
     """Takes the demo blog to the point where it can leave `resolving`."""
     for finding_id in (HIGH_FIX, MEDIUM_FIX, LOW_FIX, HIGH_CLAIM_FIX):
-        assert (
-            decide(
-                creator, content_id, finding_id, "accept_fix", fix_text="Better words"
-            ).status_code
-            == 201
-        )
+        assert accept(creator, content_id, finding_id).status_code == 201
     for finding_id in (CRITICAL, HIGH_CLAIM):
         assert (
             decide(reviewer, content_id, finding_id, "override", "Approved copy").status_code
             == 201
         )
     assert decide(reviewer, content_id, UNSURE, "resolve", "This is fine").status_code == 201
+    # A claim fix rewrites one of its two spans, so a reviewer has to agree to it.
+    assert (
+        decide(reviewer, content_id, HIGH_CLAIM_FIX, "resolve", "Reads fine").status_code
+        == 201
+    )
 
 
 # Overrides
@@ -230,10 +242,7 @@ def test_a_reviewer_rejects_with_a_reason_and_the_creator_must_fix_it(client_for
     assert found["status"] == "override_rejected"
     assert "override" not in found["allowed"]
     assert decide(creator, content_id, LOW_FIX, "override", "Again").status_code == 403
-    assert (
-        decide(creator, content_id, LOW_FIX, "accept_fix", fix_text="new hires").status_code
-        == 201
-    )
+    assert accept(creator, content_id, LOW_FIX).status_code == 201
 
 
 @pytest.mark.parametrize("role", [Role.creator, Role.manager, Role.legal, Role.admin])
@@ -292,7 +301,7 @@ def test_an_open_unsure_finding_blocks_leaving_resolving(client_for):
     reviewer = client_for(Role.reviewer, "lena")
     content_id = resolving(creator)
     for finding_id in (HIGH_FIX, MEDIUM_FIX, LOW_FIX, HIGH_CLAIM_FIX):
-        decide(creator, content_id, finding_id, "accept_fix", fix_text="Better words")
+        accept(creator, content_id, finding_id)
     for finding_id in (CRITICAL, HIGH_CLAIM):
         decide(reviewer, content_id, finding_id, "override", "Approved copy")
 
@@ -305,17 +314,33 @@ def test_an_open_unsure_finding_blocks_leaving_resolving(client_for):
 # Fixes
 
 
-def test_accepting_a_fix_needs_its_text(client_for):
+def test_a_fix_must_be_offered_before_it_can_be_accepted(client_for):
     creator = client_for()
     content_id = resolving(creator)
 
-    assert decide(creator, content_id, HIGH_FIX, "accept_fix").status_code == 422
+    response = decide(creator, content_id, HIGH_FIX, "accept_fix", fix_text="Anything")
+
+    assert response.status_code == 409
+    assert standing(creator, content_id, HIGH_FIX)["status"] == "open"
+
+
+def test_accepting_uses_the_engines_wording_and_ignores_the_request(client_for):
+    creator = client_for()
+    content_id = resolving(creator)
+    offer(creator, content_id, HIGH_FIX)
+
+    decide(
+        creator, content_id, HIGH_FIX, "accept_fix", fix_text="Tarnhollow Onramp"
+    )
+
+    assert standing(creator, content_id, HIGH_FIX)["fix_text"] == "Tarnhollow Landing"
 
 
 def test_a_fix_cannot_be_accepted_where_none_is_available(client_for):
     creator = client_for()
     content_id = resolving(creator)
 
+    assert offer(creator, content_id, CRITICAL).status_code == 403
     response = decide(creator, content_id, CRITICAL, "accept_fix", fix_text="Anything")
 
     assert response.status_code == 403
@@ -324,18 +349,156 @@ def test_a_fix_cannot_be_accepted_where_none_is_available(client_for):
 def test_a_fix_cannot_be_accepted_twice(client_for):
     creator = client_for()
     content_id = resolving(creator)
-    decide(creator, content_id, HIGH_FIX, "accept_fix", fix_text="Tarnhollow Landing")
+    accept(creator, content_id, HIGH_FIX)
 
-    response = decide(creator, content_id, HIGH_FIX, "accept_fix", fix_text="Again")
+    assert decide(creator, content_id, HIGH_FIX, "accept_fix").status_code == 403
+
+
+def test_only_the_creator_can_ask_for_a_fix(client_for):
+    creator = client_for()
+    content_id = resolving(creator)
+
+    response = offer(client_for(Role.reviewer, "lena"), content_id, HIGH_FIX)
 
     assert response.status_code == 403
+
+
+def test_reopening_returns_the_same_offer_and_spends_no_attempt(client_for):
+    creator = client_for()
+    content_id = resolving(creator)
+
+    first = offer(creator, content_id, HIGH_FIX).json()
+    second = offer(creator, content_id, HIGH_FIX).json()
+
+    assert first == second
+    assert second["attempt"] == 1
+
+
+def test_a_second_attempt_is_available_and_a_third_is_refused(client_for):
+    creator = client_for()
+    content_id = resolving(creator)
+    offer(creator, content_id, HIGH_FIX)
+
+    assert offer(creator, content_id, HIGH_FIX, again=True).json()["attempt"] == 2
+
+    third = offer(creator, content_id, HIGH_FIX, again=True)
+    assert third.status_code == 422
+    assert third.json()["detail"] == "No safe fix found; marked for review"
+
+
+def test_attempts_are_counted_per_review_not_across_pieces(client_for):
+    creator = client_for()
+    first = resolving(creator)
+    second = resolving(creator)
+    offer(creator, first, HIGH_FIX)
+    offer(creator, first, HIGH_FIX, again=True)
+
+    assert offer(creator, second, HIGH_FIX).json()["attempt"] == 1
+
+
+def test_an_edited_fix_needs_its_text(client_for):
+    creator = client_for()
+    content_id = resolving(creator)
+
+    assert decide(creator, content_id, HIGH_FIX, "edit_fix").status_code == 422
+
+
+def test_an_edited_fix_waits_for_a_reviewers_sign_off(client_for):
+    creator = client_for()
+    reviewer = client_for(Role.reviewer, "lena")
+    content_id = resolving(creator)
+
+    decide(creator, content_id, HIGH_FIX, "edit_fix", fix_text="Tarnhollow Onramp")
+
+    edited = standing(reviewer, content_id, HIGH_FIX)
+    assert edited["status"] == "fix_edited"
+    assert edited["fix_text"] == "Tarnhollow Onramp"
+    assert edited["allowed"] == ["reject_override", "resolve"]
+
+
+def test_a_reviewer_can_reject_an_edit_which_reopens_the_finding(client_for):
+    creator = client_for()
+    reviewer = client_for(Role.reviewer, "lena")
+    content_id = resolving(creator)
+    decide(creator, content_id, HIGH_FIX, "edit_fix", fix_text="Tarnhollow Onramp")
+
+    decide(reviewer, content_id, HIGH_FIX, "reject_override", "Still the old name")
+
+    found = standing(creator, content_id, HIGH_FIX)
+    assert found["status"] == "override_rejected"
+    assert found["fix_text"] is None
+    assert "accept_fix" in found["allowed"]
+
+
+def test_a_signed_off_edit_keeps_its_wording(client_for):
+    creator = client_for()
+    reviewer = client_for(Role.reviewer, "lena")
+    content_id = resolving(creator)
+    decide(creator, content_id, HIGH_FIX, "edit_fix", fix_text="The Landing app")
+
+    decide(reviewer, content_id, HIGH_FIX, "resolve", "Reads fine")
+
+    found = standing(creator, content_id, HIGH_FIX)
+    assert (found["status"], found["fix_text"]) == ("resolved", "The Landing app")
+
+
+def test_a_fix_for_part_of_a_split_claim_needs_a_reviewer(client_for):
+    creator = client_for()
+    content_id = resolving(creator)
+
+    accept(creator, content_id, HIGH_CLAIM_FIX)
+
+    assert standing(creator, content_id, HIGH_CLAIM_FIX)["status"] == "fix_edited"
+
+
+def test_an_unsigned_edit_blocks_the_manager(client_for):
+    creator = client_for()
+    reviewer = client_for(Role.reviewer, "lena")
+    content_id = resolving(creator)
+    clear_everything(creator, reviewer, content_id)
+    second = resolving(creator)
+    for finding_id in (MEDIUM_FIX, LOW_FIX, HIGH_CLAIM_FIX):
+        accept(creator, second, finding_id)
+    decide(creator, second, HIGH_FIX, "edit_fix", fix_text="The Landing app")
+    for finding_id in (CRITICAL, HIGH_CLAIM):
+        decide(reviewer, second, finding_id, "override", "Approved copy")
+    decide(reviewer, second, UNSURE, "resolve", "This is fine")
+    move(creator, second, "reviewer_check")
+
+    response = move(reviewer, second, "manager_approval")
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "2 decisions waiting for a reviewer"
+
+
+def overlapping(finding):
+    return finding.model_copy(update={"spans": [Span(chunk_id="c", start=0, end=5)]})
+
+
+def test_overlapping_fixes_are_refused_when_the_second_is_saved(client_for, monkeypatch):
+    creator = client_for()
+    content_id = resolving(creator)
+    findings = [
+        Finding.model_validate(item) for item in data.findings_for_piece("agency-blog")
+    ]
+    monkeypatch.setattr(
+        "app.clients.engine.list_findings",
+        lambda review_id: [overlapping(item) for item in findings],
+    )
+
+    assert accept(creator, content_id, HIGH_FIX).status_code == 201
+    response = accept(creator, content_id, MEDIUM_FIX)
+
+    assert response.status_code == 409
+    assert "overlaps" in response.json()["detail"]
+    assert standing(creator, content_id, MEDIUM_FIX)["status"] == "open"
 
 
 def test_an_accepted_and_an_edited_fix_keep_their_wording(client_for):
     creator = client_for()
     content_id = resolving(creator)
 
-    decide(creator, content_id, HIGH_FIX, "accept_fix", fix_text="Tarnhollow Landing")
+    accept(creator, content_id, HIGH_FIX)
     decide(creator, content_id, MEDIUM_FIX, "edit_fix", fix_text="trusted by teams")
 
     accepted = standing(creator, content_id, HIGH_FIX)
@@ -352,7 +515,7 @@ def test_a_creator_cannot_decide_on_someone_elses_content(client_for):
     content_id = resolving(creator)
     other = client_for(Role.creator, "priya")
 
-    response = decide(other, content_id, HIGH_FIX, "accept_fix", fix_text="Mine")
+    response = decide(other, content_id, HIGH_FIX, "edit_fix", fix_text="Mine")
 
     assert response.status_code == 404
 
@@ -362,7 +525,7 @@ def test_decisions_on_one_piece_do_not_reach_another(client_for):
     first = resolving(creator)
     second = resolving(creator)
 
-    decide(creator, first, HIGH_FIX, "accept_fix", fix_text="Tarnhollow Landing")
+    accept(creator, first, HIGH_FIX)
 
     assert standing(creator, first, HIGH_FIX)["status"] == "fix_accepted"
     assert standing(creator, second, HIGH_FIX)["status"] == "open"
@@ -421,6 +584,67 @@ def test_a_creator_cannot_publish_or_approve(client_for, no_findings):
     assert move(creator, content_id, "published").status_code == 403
 
 
+def run_status(monkeypatch, value):
+    monkeypatch.setattr(
+        "app.clients.engine.review_status", lambda review_id, session: value
+    )
+
+
+@pytest.mark.parametrize(
+    ("value", "message"),
+    [
+        ("running", "The review is still running"),
+        ("failed", "The review didn't finish. Start it again."),
+        ("unknown", "The review didn't finish. Start it again."),
+    ],
+)
+def test_an_unfinished_run_cannot_leave_ai_review(client_for, monkeypatch, value, message):
+    creator = client_for()
+    content_id = started(creator)
+    run_status(monkeypatch, value)
+
+    response = move(creator, content_id, "resolving")
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == message
+    assert board(creator, content_id)["state"] == "ai_review"
+
+
+def test_a_failed_run_can_be_started_again(client_for, monkeypatch):
+    creator = client_for()
+    content_id = started(creator)
+    run_status(monkeypatch, "failed")
+
+    assert creator.post(f"/content/{content_id}/reviews").status_code == 201
+
+
+def test_a_review_must_cover_the_newest_version(client_for, no_findings):
+    creator = client_for()
+    content_id = resolving(creator)
+    creator.post(f"/content/{content_id}/versions", data={"text": "Newer text"})
+
+    response = move(creator, content_id, "reviewer_check")
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Review the newest version first"
+
+
+def test_a_rejected_override_stays_rejected_after_a_new_review(client_for):
+    creator = client_for()
+    reviewer = client_for(Role.reviewer, "lena")
+    content_id = resolving(creator)
+    decide(creator, content_id, LOW_FIX, "override", "It's a quote")
+    decide(reviewer, content_id, LOW_FIX, "reject_override", "It isn't")
+
+    creator.post(f"/content/{content_id}/versions", data={"text": "A small change"})
+    assert creator.post(f"/content/{content_id}/reviews").status_code == 201
+    move(creator, content_id, "resolving")
+
+    assert standing(creator, content_id, LOW_FIX)["status"] == "open"
+    assert "override" not in standing(creator, content_id, LOW_FIX)["allowed"]
+    assert decide(creator, content_id, LOW_FIX, "override", "Again").status_code == 403
+
+
 def test_open_findings_block_submission(client_for):
     creator = client_for()
     content_id = resolving(creator)
@@ -436,7 +660,8 @@ def test_a_pending_override_can_reach_the_reviewer_but_not_the_manager(client_fo
     reviewer = client_for(Role.reviewer, "lena")
     second = resolving(creator)
     for finding_id in (HIGH_FIX, HIGH_CLAIM_FIX):
-        decide(creator, second, finding_id, "accept_fix", fix_text="Better words")
+        accept(creator, second, finding_id)
+    decide(reviewer, second, HIGH_CLAIM_FIX, "resolve", "Reads fine")
     decide(creator, second, MEDIUM_FIX, "override", "It's a quote")
     decide(creator, second, LOW_FIX, "override", "It's a quote")
     for finding_id in (CRITICAL, HIGH_CLAIM):
@@ -447,7 +672,7 @@ def test_a_pending_override_can_reach_the_reviewer_but_not_the_manager(client_fo
 
     response = move(reviewer, second, "manager_approval")
     assert response.status_code == 409
-    assert response.json()["detail"] == "2 overrides waiting for a reviewer"
+    assert response.json()["detail"] == "2 decisions waiting for a reviewer"
 
     decide(reviewer, second, MEDIUM_FIX, "confirm_override")
     decide(reviewer, second, LOW_FIX, "confirm_override")
@@ -459,7 +684,7 @@ def test_a_rejected_override_blocks_submission(client_for):
     reviewer = client_for(Role.reviewer, "lena")
     second = resolving(creator)
     for finding_id in (HIGH_FIX, MEDIUM_FIX, HIGH_CLAIM_FIX):
-        decide(creator, second, finding_id, "accept_fix", fix_text="Better words")
+        accept(creator, second, finding_id)
     for finding_id in (CRITICAL, HIGH_CLAIM):
         decide(reviewer, second, finding_id, "override", "Approved copy")
     decide(reviewer, second, UNSURE, "resolve", "This is fine")
@@ -655,6 +880,16 @@ def fixed(text):
     return FindingProgress(FindingStatus.fix_accepted, text)
 
 
+def test_a_zero_length_span_counts_as_document_level():
+    text = text_with_fixes(
+        [chunk("c1", 0, "Hello")],
+        [finding_with("a", [span("c1", 2, 2)])],
+        {"a": fixed("Results vary.")},
+    )
+
+    assert text == "Hello\n\nResults vary."
+
+
 def test_a_fix_replaces_only_its_span():
     text = text_with_fixes(
         [chunk("c1", 0, "Hello newbies today")],
@@ -675,14 +910,16 @@ def test_two_fixes_in_one_chunk_do_not_shift_each_other():
     assert text == "first two third"
 
 
-def test_overlapping_fixes_never_corrupt_the_text():
-    text = text_with_fixes(
-        [chunk("c1", 0, "one two three")],
-        [finding_with("a", [span("c1", 0, 7)]), finding_with("b", [span("c1", 4, 13)])],
-        {"a": fixed("X"), "b": fixed("Y")},
-    )
-
-    assert text == "one Y"
+def test_overlapping_fixes_are_never_dropped_silently():
+    with pytest.raises(FixesOverlap):
+        text_with_fixes(
+            [chunk("c1", 0, "one two three")],
+            [
+                finding_with("a", [span("c1", 0, 7)]),
+                finding_with("b", [span("c1", 4, 13)]),
+            ],
+            {"a": fixed("X"), "b": fixed("Y")},
+        )
 
 
 def test_a_claim_fix_rewrites_its_last_span():
@@ -715,54 +952,82 @@ def test_chunks_stay_in_order_and_images_are_left_out():
     assert text == "First\n\nSecond"
 
 
-def test_submitting_saves_a_version_with_the_fixes_applied(client_for, session):
-    creator = client_for()
-    reviewer = client_for(Role.reviewer, "lena")
-    content_id = resolving(creator)
-    clear_everything(creator, reviewer, content_id)
-
-    assert move(creator, content_id, "reviewer_check").status_code == 200
-
-    versions = session.scalars(
+def versions_of(session, content_id):
+    return session.scalars(
         select(ContentVersion)
         .where(ContentVersion.content_id == content_id)
         .order_by(ContentVersion.version)
     ).all()
-    assert [version.version for version in versions] == [1, 2]
-    assert "Better words" in versions[1].text
-    assert "Tarnhollow Onramp" not in versions[1].text
 
 
-def test_submitting_twice_with_the_same_fixes_adds_one_version(client_for, session):
+def test_fixes_reach_a_version_only_when_the_reviewer_passes_it(client_for, session):
     creator = client_for()
     reviewer = client_for(Role.reviewer, "lena")
     content_id = resolving(creator)
     clear_everything(creator, reviewer, content_id)
+
     move(creator, content_id, "reviewer_check")
-    move(reviewer, content_id, "resolving", "Check it again")
+    assert len(versions_of(session, content_id)) == 1
 
-    assert move(creator, content_id, "reviewer_check").status_code == 200
+    assert move(reviewer, content_id, "manager_approval").status_code == 200
 
-    versions = session.scalars(
-        select(ContentVersion).where(ContentVersion.content_id == content_id)
-    ).all()
-    assert len(versions) == 2
+    versions = versions_of(session, content_id)
+    assert [version.version for version in versions] == [1, 2]
+    assert "Tarnhollow Landing" in versions[1].text
+    assert "Tarnhollow Onramp" not in versions[1].text
+    assert versions[1].fixes_applied is True
+
+
+def test_an_edit_the_reviewer_rejected_never_reaches_a_version(client_for, session):
+    creator = client_for()
+    reviewer = client_for(Role.reviewer, "lena")
+    content_id = resolving(creator)
+    clear_everything(creator, reviewer, content_id)
+    second = resolving(creator)
+    decide(creator, second, LOW_FIX, "edit_fix", fix_text="still newbies")
+    decide(reviewer, second, LOW_FIX, "reject_override", "Still the banned word")
+    accept(creator, second, LOW_FIX)
+    for finding_id in (HIGH_FIX, MEDIUM_FIX, HIGH_CLAIM_FIX):
+        accept(creator, second, finding_id)
+    decide(reviewer, second, HIGH_CLAIM_FIX, "resolve", "Reads fine")
+    for finding_id in (CRITICAL, HIGH_CLAIM):
+        decide(reviewer, second, finding_id, "override", "Approved copy")
+    decide(reviewer, second, UNSURE, "resolve", "This is fine")
+    move(creator, second, "reviewer_check")
+    move(reviewer, second, "manager_approval")
+
+    assert "still newbies" not in versions_of(session, second)[-1].text
+
+
+def test_a_fixed_version_keeps_the_upload(client_for, session):
+    creator = client_for()
+    reviewer = client_for(Role.reviewer, "lena")
+    content_id = creator.post(
+        "/content",
+        data={k: v for k, v in FORM.items() if k != "text"},
+        files={"file": ("guide.pdf", b"%PDF-1.7 demo")},
+    ).json()["id"]
+    creator.post(f"/content/{content_id}/reviews")
+    move(creator, content_id, "resolving")
+    clear_everything(creator, reviewer, content_id)
+    move(creator, content_id, "reviewer_check")
+
+    move(reviewer, content_id, "manager_approval")
+
+    first, second = versions_of(session, content_id)
+    assert second.file_ref == first.file_ref
+    assert second.file_name == "guide.pdf"
 
 
 def test_with_no_fixes_no_version_is_added(client_for, session, no_findings):
     creator = client_for()
+    reviewer = client_for(Role.reviewer, "lena")
     content_id = resolving(creator)
-
     move(creator, content_id, "reviewer_check")
 
-    assert (
-        len(
-            session.scalars(
-                select(ContentVersion).where(ContentVersion.content_id == content_id)
-            ).all()
-        )
-        == 1
-    )
+    move(reviewer, content_id, "manager_approval")
+
+    assert len(versions_of(session, content_id)) == 1
 
 
 # Decisions for the engine
@@ -773,7 +1038,7 @@ def test_decisions_are_listed_in_the_contract_shape(client_for):
     content_id = resolving(creator)
     decide(creator, content_id, LOW_FIX, "override", "It's a quote")
 
-    decisions = creator.get("/workflow/decisions").json()
+    decisions = client_for(Role.reviewer, "lena").get("/workflow/decisions").json()
 
     assert len(decisions) == 1
     assert decisions[0]["finding_id"] == LOW_FIX
@@ -787,9 +1052,15 @@ def test_decisions_can_be_read_since_a_time(client_for):
     content_id = resolving(creator)
     decide(creator, content_id, LOW_FIX, "override", "It's a quote")
 
-    later = creator.get("/workflow/decisions", params={"since": "2999-01-01T00:00:00Z"})
+    later = client_for(Role.manager, "marcus").get(
+        "/workflow/decisions", params={"since": "2999-01-01T00:00:00Z"}
+    )
 
     assert later.json() == []
+
+
+def test_creators_cannot_read_other_peoples_decisions(client_for):
+    assert client_for().get("/workflow/decisions").status_code == 403
 
 
 def test_content_model_still_tracks_the_state(client_for, session):

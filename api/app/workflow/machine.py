@@ -1,7 +1,7 @@
 """The content state machine. Every rule here is enforced on the server."""
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
@@ -23,6 +23,7 @@ from app.workflow.transitions import move_content
 SERIOUS = {Severity.high, Severity.critical}
 FINISHED = {ContentState.published, ContentState.rejected}
 REJECTORS = {Role.reviewer, Role.manager}
+WAITING_FOR_REVIEWER = {FindingStatus.override_pending, FindingStatus.fix_edited}
 
 
 @dataclass(frozen=True)
@@ -51,6 +52,18 @@ class MoveOption:
     blocked_by: str | None
 
 
+@dataclass(frozen=True)
+class ReviewFacts:
+    """What the state machine needs to know about the latest review."""
+
+    findings: Sequence[Finding] = ()
+    progress: Mapping[str, FindingProgress] = field(default_factory=dict)
+    # running, done, failed or unknown. Only `done` means every check finished.
+    run_status: str = "unknown"
+    # False once a newer version exists than the one this review looked at.
+    covers_latest: bool = False
+
+
 def needs_legal(findings: Sequence[Finding]) -> bool:
     return any(
         finding.check is CheckType.claim and finding.severity in SERIOUS
@@ -58,25 +71,23 @@ def needs_legal(findings: Sequence[Finding]) -> bool:
     )
 
 
-def _still_open(
-    findings: Sequence[Finding], progress: Mapping[str, FindingProgress]
-) -> int:
+def _status_of(finding: Finding, facts: ReviewFacts) -> FindingStatus:
+    return facts.progress.get(finding.id, FindingProgress()).status
+
+
+def _still_open(facts: ReviewFacts) -> int:
     def is_open(finding: Finding) -> bool:
-        state = progress.get(finding.id, FindingProgress()).status
+        state = _status_of(finding, facts)
         if state is FindingStatus.override_rejected:
             return True
         return state is FindingStatus.open and finding.verdict is not Verdict.PASS
 
-    return sum(is_open(finding) for finding in findings)
+    return sum(is_open(finding) for finding in facts.findings)
 
 
-def _pending(
-    findings: Sequence[Finding], progress: Mapping[str, FindingProgress]
-) -> int:
+def _waiting(facts: ReviewFacts) -> int:
     return sum(
-        progress.get(finding.id, FindingProgress()).status
-        is FindingStatus.override_pending
-        for finding in findings
+        _status_of(finding, facts) in WAITING_FOR_REVIEWER for finding in facts.findings
     )
 
 
@@ -84,22 +95,27 @@ def _plural(count: int, noun: str) -> str:
     return f"1 {noun}" if count == 1 else f"{count} {noun}s"
 
 
-def blocked_by(
-    move: Move,
-    findings: Sequence[Finding],
-    progress: Mapping[str, FindingProgress],
-) -> str | None:
+def blocked_by(move: Move, facts: ReviewFacts) -> str | None:
     """Why a move can't happen yet, or None when nothing stands in its way."""
-    open_count = _still_open(findings, progress)
+    if move.source is ContentState.ai_review:
+        if facts.run_status == "running":
+            return "The review is still running"
+        if facts.run_status != "done":
+            return "The review didn't finish. Start it again."
+
     leaving_for_review = move.target is ContentState.reviewer_check
     leaving_for_approval = move.target is ContentState.manager_approval
+    if leaving_for_review and not facts.covers_latest:
+        return "Review the newest version first"
+
+    open_count = _still_open(facts)
     if (leaving_for_review or leaving_for_approval) and open_count:
         return f"{_plural(open_count, 'finding')} still open"
-    if leaving_for_approval and (pending := _pending(findings, progress)):
-        return f"{_plural(pending, 'override')} waiting for a reviewer"
+    if leaving_for_approval and (waiting := _waiting(facts)):
+        return f"{_plural(waiting, 'decision')} waiting for a reviewer"
 
     if move.source is ContentState.manager_approval:
-        legal = needs_legal(findings)
+        legal = needs_legal(facts.findings)
         if move.target is ContentState.published and legal:
             return "A high-severity claim needs legal sign-off first"
         if move.target is ContentState.legal_signoff and not legal:
@@ -114,14 +130,11 @@ def _may_make(move: Move, user: User, content: Content) -> bool:
 
 
 def available_moves(
-    content: Content,
-    user: User,
-    findings: Sequence[Finding],
-    progress: Mapping[str, FindingProgress],
+    content: Content, user: User, facts: ReviewFacts
 ) -> list[MoveOption]:
     state = ContentState(content.state)
     options = [
-        MoveOption(move.target, move.needs_reason, blocked_by(move, findings, progress))
+        MoveOption(move.target, move.needs_reason, blocked_by(move, facts))
         for move in MOVES
         if move.source is state and _may_make(move, user, content)
     ]
@@ -136,15 +149,12 @@ def make_move(
     content: Content,
     target: ContentState,
     actor: User,
-    findings: Sequence[Finding],
-    progress: Mapping[str, FindingProgress],
+    facts: ReviewFacts,
     reason: str | None,
     rulebook_version: int | None,
 ) -> None:
     """Checks and applies a state change. The caller commits."""
-    options = {
-        option.to: option for option in available_moves(content, actor, findings, progress)
-    }
+    options = {option.to: option for option in available_moves(content, actor, facts)}
     option = options.get(target)
     if option is None:
         raise HTTPException(

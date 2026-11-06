@@ -6,8 +6,13 @@ from app.contracts import ContentState, DecisionAction, FindingStatus
 class DecisionIn(BaseModel):
     action: DecisionAction
     reason: str | None = None
-    # The accepted or edited wording, for accept_fix and edit_fix.
+    # The creator's wording, for edit_fix. accept_fix uses the engine's offer.
     fix_text: str | None = None
+
+
+class FixRequest(BaseModel):
+    # False returns the stored suggestion, so reopening spends no attempt.
+    again: bool = False
 
 
 class TransitionIn(BaseModel):
