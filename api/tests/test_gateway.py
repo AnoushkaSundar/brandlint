@@ -5,10 +5,16 @@ from __future__ import annotations
 
 import pytest
 from app.db import Base
-from app.gateway import llm
+from app.gateway import llm, masking
 from app.gateway.models import GatewayLog
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
+
+
+@pytest.fixture(autouse=True)
+def empty_deny_list(monkeypatch):
+    # These tests cover routing and logging. test_masking.py covers masking.
+    monkeypatch.setattr(masking, "deny_list", lambda bind: masking.DenyList((), frozenset()))
 
 
 @pytest.fixture()

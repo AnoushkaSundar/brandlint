@@ -27,8 +27,8 @@ import httpx
 from sqlalchemy import Engine, func, select
 from sqlalchemy.orm import Session
 
+from app.admin.brand import PROTECTED_CLASSES, list_facts, list_terms
 from app.contracts import DataClass
-from app.engine.brand import load_brand
 from app.gateway.models import TokenVault
 
 PRESIDIO_URL = os.getenv("PRESIDIO_ANALYZER_URL", "http://localhost:5002")
@@ -36,7 +36,6 @@ PRESIDIO_TIMEOUT_S = float(os.getenv("PRESIDIO_TIMEOUT_S", "10"))
 PRESIDIO_SCORE = 0.5
 DENY_LIST_TTL_S = 60
 
-_PROTECTED_CLASSES = {DataClass.confidential, DataClass.restricted}
 _PERSONAL_DATA_CLASSES = {DataClass.internal, DataClass.confidential}
 _LABELS = {
     "PERSON": "PERSON",
@@ -68,16 +67,18 @@ class Masked:
 Analyzer = Callable[[str], list[dict[str, Any]]]
 
 
-def _build_deny_list() -> DenyList:
-    brand = load_brand(1)
+def _build_deny_list(bind: Engine) -> DenyList:
+    with Session(bind) as session:
+        facts = list_facts(session)
+        terms = list_terms(session)
     values = {
         fact.value.strip()
-        for fact in brand.facts
-        if fact.data_class in _PROTECTED_CLASSES and fact.value.strip()
+        for fact in facts
+        if fact.data_class in PROTECTED_CLASSES and fact.value.strip()
     }
     allowed = {
         word.casefold()
-        for term in brand.terms
+        for term in terms
         for word in (term.preferred, term.renamed_from, *term.banned)
         if word
     }
@@ -85,11 +86,11 @@ def _build_deny_list() -> DenyList:
     return DenyList(tuple(sorted(values, key=len, reverse=True)), frozenset(allowed))
 
 
-def deny_list() -> DenyList:
+def deny_list(bind: Engine) -> DenyList:
     global _deny_cache
     with _deny_lock:
         if _deny_cache is None or time.monotonic() - _deny_cache[0] > DENY_LIST_TTL_S:
-            _deny_cache = (time.monotonic(), _build_deny_list())
+            _deny_cache = (time.monotonic(), _build_deny_list(bind))
         return _deny_cache[1]
 
 
@@ -186,7 +187,7 @@ def mask_messages(
     scope: str,
     bind: Engine,
 ) -> Masked:
-    deny = deny_list()
+    deny = deny_list(bind)
     masked = Masked(messages=[])
     personal = data_class in _PERSONAL_DATA_CLASSES
 

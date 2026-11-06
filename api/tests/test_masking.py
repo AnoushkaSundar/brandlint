@@ -5,6 +5,8 @@ from __future__ import annotations
 import threading
 
 import pytest
+from app.admin import models as admin_models
+from app.admin.seed import seed_brand
 from app.contracts import Rule
 from app.db import Base
 from app.engine.agents import language
@@ -42,7 +44,7 @@ def session(engine):
 
 @pytest.fixture(autouse=True)
 def fixed_deny_list(monkeypatch):
-    monkeypatch.setattr(masking, "deny_list", lambda: DENY)
+    monkeypatch.setattr(masking, "deny_list", lambda bind: DENY)
 
 
 @pytest.fixture()
@@ -178,7 +180,7 @@ def test_presidio_outage_stops_the_call(session, sent, monkeypatch):
 
 
 def test_deny_list_failure_stops_the_call(session, sent, monkeypatch):
-    def broken():
+    def broken(bind):
         raise OSError("no brand data")
 
     monkeypatch.setattr(masking, "deny_list", broken)
@@ -295,3 +297,22 @@ def test_language_agent_stays_valid_through_masking(session, monkeypatch):
     assert found.verdict == "VIOLATION"
     assert found.spans[0] == {"chunk_id": "c", "start": 0, "end": len(text)}
     assert found.explanation == "Bluewren overpromises."
+
+
+def test_the_deny_list_comes_from_protected_facts(engine, monkeypatch):
+    monkeypatch.undo()
+    monkeypatch.setattr(masking, "_deny_cache", None)
+    Base.metadata.create_all(
+        engine,
+        tables=[
+            admin_models.Rule.__table__,
+            admin_models.Fact.__table__,
+            admin_models.Term.__table__,
+            admin_models.Asset.__table__,
+        ],
+    )
+    with Session(engine) as session:
+        seed_brand(session)
+    deny = masking.deny_list(engine)
+    assert "Bluewren" in deny.terms
+    assert "tarnhollow landing" in deny.allowed
