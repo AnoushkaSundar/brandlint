@@ -22,6 +22,7 @@ from app.engine import critic
 from app.engine.agents import language
 from app.engine.agents.language import ClassifyFn
 from app.engine.checks import (
+    SEC_CONFIDENTIAL,
     SEC_HIDDEN_CONTENT,
     SEC_INJECTION,
     CheckContext,
@@ -121,6 +122,7 @@ def build_review_graph(
             state["candidates"],
             known_rule_ids={
                 *(rule.id for rule in ctx.rules),
+                SEC_CONFIDENTIAL,
                 SEC_HIDDEN_CONTENT,
                 SEC_INJECTION,
             },
