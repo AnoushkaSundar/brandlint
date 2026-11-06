@@ -16,6 +16,7 @@ class VersionOut(BaseModel):
     version: int
     text: str
     file_name: str | None
+    fixes_applied: bool
     created_by: str
     created_at: datetime
 

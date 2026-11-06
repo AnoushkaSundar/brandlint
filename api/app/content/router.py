@@ -10,6 +10,7 @@ from app.auth.dependencies import CurrentUser, SessionDep, require_roles
 from app.auth.models import User
 from app.clients import engine as engine_client
 from app.content import storage
+from app.content.access import latest_review, readable_content
 from app.content.models import Content, ContentVersion
 from app.content.schemas import (
     Channel,
@@ -30,7 +31,14 @@ Source = Annotated[str, Form(min_length=1, max_length=255)]
 PastedText = Annotated[str, Form()]
 Upload = Annotated[UploadFile | None, File()]
 
-LOCKED_STATES = {ContentState.published.value, ContentState.rejected.value}
+# Once a piece has been submitted, new text would skip the review it's in.
+LOCKED_STATES = {
+    ContentState.reviewer_check.value,
+    ContentState.manager_approval.value,
+    ContentState.legal_signoff.value,
+    ContentState.published.value,
+    ContentState.rejected.value,
+}
 REVIEWABLE_STATES = {
     ContentState.draft.value,
     ContentState.ai_review.value,
@@ -38,20 +46,8 @@ REVIEWABLE_STATES = {
 }
 
 
-def _can_read(user: User, content: Content) -> bool:
-    return user.role != Role.creator.value or content.creator_id == user.id
-
-
-def _readable(content_id: str, user: User, session: Session) -> Content:
-    content = session.get(Content, content_id)
-    # Not found rather than forbidden, so ids can't be used to probe for content.
-    if content is None or not _can_read(user, content):
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Content not found")
-    return content
-
-
 def _owned(content_id: str, user: User, session: Session) -> Content:
-    content = _readable(content_id, user, session)
+    content = readable_content(content_id, user, session)
     if content.creator_id != user.id:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Only its creator can do this")
     return content
@@ -129,16 +125,11 @@ def _versions(session: Session, content_id: str) -> list[ContentVersion]:
 
 def _detail(session: Session, content: Content) -> ContentDetail:
     versions = _versions(session, content.id)
-    latest_review = session.scalar(
-        select(Review)
-        .where(Review.content_version_id.in_([v.id for v in versions]))
-        .order_by(Review.created_at.desc())
-        .limit(1)
-    )
+    review = latest_review(session, content.id)
     return ContentDetail(
         **ContentOut.model_validate(content).model_dump(),
         versions=[VersionOut.model_validate(v) for v in versions],
-        latest_review=ReviewOut.model_validate(latest_review) if latest_review else None,
+        latest_review=ReviewOut.model_validate(review) if review else None,
     )
 
 
@@ -182,7 +173,7 @@ def create_content(
 def get_content(
     content_id: str, user: CurrentUser, session: SessionDep
 ) -> ContentDetail:
-    return _detail(session, _readable(content_id, user, session))
+    return _detail(session, readable_content(content_id, user, session))
 
 
 @router.post(
@@ -239,6 +230,16 @@ def start_review(content_id: str, user: Creator, session: SessionDep) -> Review:
             status.HTTP_409_CONFLICT, "This content can't be reviewed in its current state."
         )
     latest = _versions(session, content_id)[0]
+    previous = latest_review(session, content_id)
+    # Reviewing the same text again would only wipe the decisions made on it.
+    if (
+        content.state == ContentState.resolving.value
+        and previous is not None
+        and previous.content_version_id == latest.id
+    ):
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "Add a new version to review it again."
+        )
     source = _content_source(content, latest)
     rulebook_version = current_rulebook_version()
     review = Review(
@@ -268,7 +269,7 @@ def download_file(
     version = session.get(ContentVersion, version_id)
     if version is None or version.file_ref is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "File not found")
-    _readable(version.content_id, user, session)
+    readable_content(version.content_id, user, session)
 
     path = storage.stored_path(version.file_ref)
     if not path.is_file():
