@@ -50,6 +50,7 @@ class MoveOut(BaseModel):
 class Board(BaseModel):
     state: ContentState
     legal_required: bool
+    can_restart: bool
     findings: list[FindingStanding]
     moves: list[MoveOut]
 

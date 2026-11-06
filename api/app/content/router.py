@@ -242,6 +242,14 @@ def start_review(content_id: str, user: Creator, session: SessionDep) -> Review:
         raise HTTPException(
             status.HTTP_409_CONFLICT, "Add a new version to review it again."
         )
+    if (
+        content.state == ContentState.ai_review.value
+        and previous is not None
+        and engine_client.review_status(previous.engine_review_id, session) == "running"
+    ):
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "This review is still running."
+        )
     source = _content_source(content, latest)
     rulebook_version = current_rulebook_version()
     review = Review(

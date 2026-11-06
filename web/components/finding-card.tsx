@@ -27,13 +27,30 @@ import type { Comment, CommentInput } from "@/lib/reviewDesk";
 import { cn } from "@/lib/utils";
 import type { DecisionInput, FindingStanding } from "@/lib/workflow";
 
+// Only inputs a person can read. Anything else in the manifest stays out.
 const MANIFEST_LABELS: Record<string, string> = {
+  rule: "Rule",
   rule_id: "Rule",
   rule_version: "Rule version",
+  rulebook_version: "Rulebook version",
+  facts: "Facts",
   fact_ids: "Facts",
+  model: "Model",
   models: "Models",
+  prompt_version: "Prompt",
+  policy_version: "Policy",
+  channel: "Channel",
   as_of: "Checked as of",
 };
+
+function inputLabel(value: unknown): string {
+  if (Array.isArray(value)) return value.map(inputLabel).join(", ");
+  if (typeof value === "object" && value !== null) {
+    const { id, version } = value as { id?: string; version?: number };
+    return version ? `${id}, version ${version}` : String(id ?? "");
+  }
+  return value === null || value === undefined ? "" : String(value);
+}
 
 function Tag({ children }: { children: React.ReactNode }) {
   return (
@@ -124,9 +141,10 @@ function Replay({ findingId }: { findingId: string }) {
       .finally(() => setLoading(false));
   }
 
-  const inputs = Object.entries(result?.manifest ?? {}).filter(
-    ([, value]) => value !== null && String(value) !== "",
-  );
+  const inputs = Object.entries(result?.manifest ?? {})
+    .filter(([key]) => key in MANIFEST_LABELS)
+    .map(([key, value]) => [key, inputLabel(value)])
+    .filter(([, value]) => value !== "");
 
   return (
     <>
@@ -155,9 +173,9 @@ function Replay({ findingId }: { findingId: string }) {
             {inputs.map(([key, value]) => (
               <div key={key} className="contents">
                 <dt className="text-muted-foreground">
-                  {MANIFEST_LABELS[key] ?? key}
+                  {MANIFEST_LABELS[key]}
                 </dt>
-                <dd>{Array.isArray(value) ? value.join(", ") : String(value)}</dd>
+                <dd>{value}</dd>
               </div>
             ))}
           </dl>

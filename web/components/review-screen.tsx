@@ -12,6 +12,7 @@ import { ApiError } from "@/lib/api";
 import {
   type ContentDetail,
   getContent,
+  startReview,
   versionFilePath,
 } from "@/lib/content";
 import type { Chunk, ContentState, Finding } from "@/lib/contracts";
@@ -36,6 +37,7 @@ import {
 type StreamState = "streaming" | "done" | "error";
 
 const BOARD_POLL_MS = 2000;
+const MAX_STREAM_RETRIES = 3;
 
 function findingCount(count: number): string {
   return count === 1 ? "1 finding" : `${count} findings`;
@@ -143,6 +145,8 @@ export function ReviewScreen({ id }: { id: string }) {
   const [board, setBoard] = useState<Board | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const leftAiReview = useRef(false);
+  const [streamAttempt, setStreamAttempt] = useState(0);
+  const streamRetries = useRef(0);
   const [error, setError] = useState<string | null>(null);
   const documentRef = useRef<HTMLDivElement>(null);
 
@@ -224,7 +228,20 @@ export function ReviewScreen({ id }: { id: string }) {
       current = false;
       close();
     };
-  }, [reviewId]);
+  }, [reviewId, streamAttempt]);
+
+  useEffect(() => {
+    // The stream replays from the start, so reopening it fills in what was missed.
+    const retry =
+      streamState === "error" &&
+      board !== null &&
+      !board.can_restart &&
+      streamRetries.current < MAX_STREAM_RETRIES;
+    if (!retry) return;
+    streamRetries.current += 1;
+    setStreamState("streaming");
+    setStreamAttempt((attempt) => attempt + 1);
+  }, [streamState, board]);
 
   useEffect(() => {
     if (streamState === "streaming") return;
@@ -260,6 +277,7 @@ export function ReviewScreen({ id }: { id: string }) {
     // A dropped stream says nothing more, so keep asking until the run has ended.
     const waiting =
       board?.state === "ai_review" &&
+      !board.can_restart &&
       board.moves.some(
         (move) => move.to === "resolving" && move.blocked_by !== null,
       );
@@ -305,6 +323,18 @@ export function ReviewScreen({ id }: { id: string }) {
 
   async function comment(input: CommentInput) {
     setComments(await postComment(id, input));
+  }
+
+  async function restart() {
+    await startReview(id);
+    leftAiReview.current = false;
+    streamRetries.current = 0;
+    setReceived([]);
+    setChunks([]);
+    setBoard(null);
+    setStreamState("streaming");
+    setStreamAttempt((attempt) => attempt + 1);
+    setContent(await getContent(id));
   }
 
   async function move(to: ContentState, reason?: string) {
@@ -380,7 +410,9 @@ export function ReviewScreen({ id }: { id: string }) {
         </p>
       )}
 
-      {board && <WorkflowBar board={board} onMove={move} />}
+      {board && (
+        <WorkflowBar board={board} onMove={move} onRestart={restart} />
+      )}
 
       <div className="mt-5 grid gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <section aria-label="Content being reviewed" ref={documentRef}>
