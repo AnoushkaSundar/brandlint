@@ -81,6 +81,31 @@ def gateway_classify(session_factory: Callable[[], Session]) -> ClassifyFn:
     return classify
 
 
+def gateway_fix(session_factory: Callable[[], Session]) -> ClassifyFn:
+    """Like `gateway_classify`, logged as a fix. Fixes never decide pass or fail."""
+
+    def fix(
+        data_class: str,
+        rule_ids: list[str],
+        payload: dict[str, Any],
+        review_id: str,
+    ) -> dict[str, Any]:
+        with session_factory() as session:
+            try:
+                return llm_call(
+                    "fix",
+                    data_class,
+                    rule_ids,
+                    payload,
+                    session=session,
+                    review_id=review_id,
+                )
+            finally:
+                session.commit()
+
+    return fix
+
+
 def flagged_chunk_ids(chunks: list[ParsedChunk], ctx: CheckContext) -> set[str]:
     """Chunks where either injection detector fired."""
     return {
