@@ -47,7 +47,7 @@ def test_public_call_returns_parsed_output_and_logs(monkeypatch, session):
     assert "choices" not in out
     # deterministic + pinned
     assert captured["body"]["temperature"] == 0
-    assert captured["body"]["model"] == "claude-haiku-5-5"
+    assert captured["body"]["model"] == "claude-haiku-4-5"
 
     row = session.query(GatewayLog).one()
     assert row.route == "litellm"

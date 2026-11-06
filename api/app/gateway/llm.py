@@ -28,7 +28,7 @@ from app.gateway.models import GatewayLog
 
 # Pinned per review. The concrete model is pinned again in the LiteLLM config;
 # this is the logical name the proxy maps to a provider.
-PINNED_MODEL = os.getenv("LLM_MODEL", "claude-haiku-5-5")
+PINNED_MODEL = os.getenv("LLM_MODEL", "claude-haiku-4-5")
 LITELLM_URL = os.getenv("LITELLM_URL", "http://localhost:4000")
 LITELLM_KEY = os.getenv("LITELLM_MASTER_KEY", "")
 TIMEOUT_S = float(os.getenv("LLM_TIMEOUT_S", "30"))
