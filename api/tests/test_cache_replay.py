@@ -32,9 +32,11 @@ TIMEOUT_S = 10
 
 
 @pytest.fixture()
-def factory():
+def factory(tmp_path):
+    # A file, not one shared connection: reviews write from several threads.
     engine = create_engine(
-        "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
+        f"sqlite:///{tmp_path}/test.db",
+        connect_args={"check_same_thread": False, "timeout": 30},
     )
     Base.metadata.create_all(
         engine,
@@ -321,3 +323,12 @@ def test_replay_compares_verdicts_and_reports_span_drift(factory):
         result = replay.replay(finding["id"], session, narrower)
     assert result["identical"] is True
     assert result["manifest"]["spans_identical"] is False
+
+
+def test_any_cache_failure_only_costs_a_model_call(factory, monkeypatch):
+    def broken():
+        raise SystemError("commit returned NULL")
+
+    model = Model()
+    assert judge(model, VerdictCache(broken)).verdict == "VIOLATION"
+    assert model.calls == 1
