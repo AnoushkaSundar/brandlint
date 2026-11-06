@@ -1,6 +1,14 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.auth.defaults import new_id, utc_now
@@ -33,6 +41,8 @@ class ContentVersion(Base):
     text: Mapped[str] = mapped_column(Text, default="")
     file_ref: Mapped[str | None] = mapped_column(String(512))
     file_name: Mapped[str | None] = mapped_column(String(255))
+    # The text has accepted fixes in it, which an uploaded file can't show.
+    fixes_applied: Mapped[bool] = mapped_column(Boolean, default=False)
     created_by: Mapped[str] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now
