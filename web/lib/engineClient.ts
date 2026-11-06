@@ -1,22 +1,11 @@
 import { apiFetch, apiUrl } from "@/lib/api";
 import type {
-  DataClass,
+  Chunk,
   Finding,
   FixSuggestion,
   Precedent,
   Verdict,
 } from "@/lib/contracts";
-
-export type Chunk = {
-  id: string;
-  content_version_id: string;
-  ordinal: number;
-  kind: "heading" | "paragraph" | "image";
-  text: string;
-  content_hash: string;
-  data_class: DataClass;
-  style?: Record<string, unknown> | null;
-};
 
 export type ReplayResult = {
   identical: boolean;

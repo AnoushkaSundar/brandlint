@@ -3,8 +3,7 @@
 import { cn } from "@/lib/utils";
 
 import { apiUrl } from "@/lib/api";
-import type { Finding, Severity } from "@/lib/contracts";
-import type { Chunk } from "@/lib/engineClient";
+import type { Chunk, Finding, Severity } from "@/lib/contracts";
 import { highlightsByChunk, type Segment, segmentText } from "@/lib/highlights";
 
 // Colour plus an underline style, so severity doesn't rely on colour alone.
