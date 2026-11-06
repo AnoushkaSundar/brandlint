@@ -19,6 +19,8 @@ def _looks_like_heading(text: str) -> bool:
 
 def parse_text(data: str) -> NormalisedDoc:
     doc = NormalisedDoc(fmt="text")
+    # Browsers send pasted text with CRLF, and Windows files use it too.
+    data = data.replace("\r\n", "\n").replace("\r", "\n")
     paragraphs = [p.strip() for p in data.split("\n\n")]
     ordinal = 0
     for para in paragraphs:
