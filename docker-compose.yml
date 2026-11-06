@@ -65,11 +65,21 @@ services:
   # Pinned by tag AND digest. Verify the digest before changing the version.
   litellm:
     image: ghcr.io/berriai/litellm:main-v1.66.0-stable@sha256:1ae3674b699ac5f4abfd55172359322270f35eaad9788e5ca02c0df9616623f2
+    command: ["--config", "/app/litellm.yaml", "--port", "4000"]
+    # Do NOT give this service .env: if it sees DATABASE_URL, LiteLLM runs
+    # `prisma db push --accept-data-loss` against that database, which is ours.
     env_file:
-      - path: .env
+      # Provider keys. Only this service reads this file, so they never reach
+      # api or web. Never add it to another service.
+      - path: .env.litellm
         required: false
+    environment:
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-}
+      # Use the model map pinned in the image, not one downloaded at startup.
+      LITELLM_LOCAL_MODEL_COST_MAP: "True"
+    volumes:
+      - ./api/app/gateway/litellm.yaml:/app/litellm.yaml:ro
     ports: ["4000:4000"]
-    # config (model list + keys via env) mounted in block 2.
 
   presidio-analyzer:
     image: mcr.microsoft.com/presidio-analyzer:2.2.362
