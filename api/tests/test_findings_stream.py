@@ -48,7 +48,12 @@ def session_factory():
         poolclass=StaticPool,
     )
     Base.metadata.create_all(
-        engine, tables=[models.Chunk.__table__, models.Finding.__table__]
+        engine,
+        tables=[
+            models.Chunk.__table__,
+            models.Finding.__table__,
+            models.ReviewCache.__table__,
+        ],
     )
     return sessionmaker(bind=engine, expire_on_commit=False, class_=Session)
 

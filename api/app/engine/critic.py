@@ -64,6 +64,8 @@ class Candidate:
     fix_available: bool = False
     # Set when the candidate came from an already-built tier-0 finding.
     finding_id: str | None = None
+    # The inputs Replay needs. Never shown to a user.
+    manifest: dict = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         self.check = CheckType(self.check)

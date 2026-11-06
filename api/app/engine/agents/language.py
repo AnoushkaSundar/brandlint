@@ -27,9 +27,11 @@ from app.contracts import (
     Verdict,
 )
 from app.engine.agents.anchors import ANCHORS, ANCHORS_VERSION
+from app.engine.cache import VerdictCache, cache_key
 from app.engine.checks.context import CheckContext
 from app.engine.chunking import ParsedChunk
 from app.engine.critic import Candidate
+from app.gateway.llm import POLICY_VERSION
 
 PROMPT_VERSION = f"language-v1+{ANCHORS_VERSION}"
 MAX_EXPLANATION = 500
@@ -202,6 +204,11 @@ def _candidate(
     )
 
 
+def _with_manifest(candidate: Candidate, manifest: dict) -> Candidate:
+    candidate.manifest = manifest
+    return candidate
+
+
 def judge(
     chunk: ParsedChunk,
     rule: Rule,
@@ -210,6 +217,7 @@ def judge(
     *,
     flagged: Collection[str],
     model: str,
+    cache: VerdictCache | None = None,
 ) -> Candidate | None:
     """Judge one chunk x rule. Returns None only for a clean PASS."""
     control = control_for(chunk)
@@ -218,26 +226,59 @@ def judge(
     question, expected = control
     whole = {"start": 0, "end": len(chunk.text)}
 
+    manifest = {
+        "kind": "language",
+        "chunk_id": chunk.id,
+        "content_hash": chunk.content_hash,
+        "channel": ctx.channel,
+        "rule": rule.model_dump(mode="json"),
+        "prompt_version": PROMPT_VERSION,
+        "policy_version": POLICY_VERSION,
+        "model": model,
+        "flagged": chunk.id in flagged,
+    }
+
     def unsure(reason: str) -> Candidate:
-        return _candidate(
-            chunk, rule, ctx, verdict=Verdict.UNSURE, confidence=0.0,
-            explanation=reason, model=model, **whole,
+        return _with_manifest(
+            _candidate(
+                chunk, rule, ctx, verdict=Verdict.UNSURE, confidence=0.0,
+                explanation=reason, model=model, **whole,
+            ),
+            manifest,
         )
 
-    payload = build_payload(chunk, rule, ctx.channel, question)
-    try:
-        raw = classify(chunk.data_class, [rule.id], payload, ctx.review_id)
-    except Exception as exc:  # noqa: BLE001 - any failure must fail closed
-        return unsure(f"Model check could not run ({type(exc).__name__}).")
+    key = cache_key(
+        chunk.text, ctx.channel, f"{rule.id}@{rule.version}", PROMPT_VERSION, model,
+        POLICY_VERSION,
+    )
+    facts = {fact.id: fact.version for fact in ctx.facts}
+    stored = cache.get(key, facts) if cache else None
+    if stored is not None:
+        result = ModelVerdict.model_validate(stored)
+    else:
+        payload = build_payload(chunk, rule, ctx.channel, question)
+        try:
+            raw = classify(chunk.data_class, [rule.id], payload, ctx.review_id)
+        except Exception as exc:  # noqa: BLE001 - any failure must fail closed
+            return unsure(f"Model check could not run ({type(exc).__name__}).")
 
-    try:
-        result = _parse(raw, rule)
-        control_ok = _control_passed(raw, expected)
-    except (TypeError, ValueError, ValidationError):
-        return unsure("Model reply did not match the required format.")
+        try:
+            result = _parse(raw, rule)
+            control_ok = _control_passed(raw, expected)
+        except (TypeError, ValueError, ValidationError):
+            return unsure("Model reply did not match the required format.")
 
-    if not control_ok:
-        return unsure("Control question failed, so this verdict can't be trusted.")
+        if not control_ok:
+            return unsure("Control question failed, so this verdict can't be trusted.")
+
+        if cache:
+            cache.put(
+                key,
+                unit_type="chunk",
+                verdict=result.verdict.value,
+                payload=result.model_dump(mode="json"),
+                manifest=manifest,
+            )
 
     if result.verdict == Verdict.PASS:
         if chunk.id in flagged:
@@ -250,9 +291,12 @@ def judge(
         if found < 0:
             return unsure("Model quoted text that is not in the content.")
         start, end = found, found + len(result.span)
-    return _candidate(
-        chunk, rule, ctx, verdict=result.verdict, confidence=result.confidence,
-        explanation=result.explanation, start=start, end=end, model=model,
+    return _with_manifest(
+        _candidate(
+            chunk, rule, ctx, verdict=result.verdict, confidence=result.confidence,
+            explanation=result.explanation, start=start, end=end, model=model,
+        ),
+        manifest,
     )
 
 
@@ -264,6 +308,7 @@ def review_chunks(
     flagged: Collection[str] = (),
     model: str,
     max_workers: int = DEFAULT_WORKERS,
+    cache: VerdictCache | None = None,
 ) -> list[Candidate]:
     """Run every chunk x applicable rule, returning results in a stable order."""
     rules = applicable_rules(ctx.rules, ctx.channel)
@@ -273,7 +318,9 @@ def review_chunks(
 
     def run(pair: tuple[ParsedChunk, Rule]) -> Candidate | None:
         chunk, rule = pair
-        return judge(chunk, rule, ctx, classify, flagged=flagged, model=model)
+        return judge(
+            chunk, rule, ctx, classify, flagged=flagged, model=model, cache=cache
+        )
 
     with ThreadPoolExecutor(max_workers=max_workers) as pool:
         results = list(pool.map(run, pairs))
