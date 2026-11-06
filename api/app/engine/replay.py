@@ -138,8 +138,10 @@ def replay(finding_id: str, session: Session, classify: ClassifyFn) -> dict | No
         verdict, spans = _replay_claim(finding, manifest, session, classify)
     else:
         verdict, spans = _replay_code(finding, manifest, session)
+    # The verdict is what must repeat. A model can quote a slightly different
+    # passage even at temperature 0, so that's reported rather than hidden.
     return {
-        "identical": verdict == finding.verdict and spans == _spans(finding.spans),
+        "identical": verdict == finding.verdict,
         "verdict": verdict,
-        "manifest": manifest,
+        "manifest": {**manifest, "spans_identical": spans == _spans(finding.spans)},
     }

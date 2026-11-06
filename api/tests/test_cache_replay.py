@@ -305,3 +305,19 @@ def test_a_broken_cache_only_costs_a_model_call():
     model = Model()
     assert judge(model, broken).verdict == "VIOLATION"
     assert model.calls == 1
+
+
+def test_replay_compares_verdicts_and_reports_span_drift(factory):
+    model = Model()
+    run = review(factory, model)
+    finding = next(f for f in findings_of(run) if f["tier"] == 1)
+
+    def narrower(data_class, rule_ids, payload, review_id):
+        reply = model(data_class, rule_ids, payload, review_id)
+        reply["verdicts"][0]["span"] = "newbie"
+        return reply
+
+    with factory() as session:
+        result = replay.replay(finding["id"], session, narrower)
+    assert result["identical"] is True
+    assert result["manifest"]["spans_identical"] is False

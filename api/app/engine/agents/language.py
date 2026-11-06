@@ -33,7 +33,7 @@ from app.engine.chunking import ParsedChunk
 from app.engine.critic import Candidate
 from app.gateway.llm import POLICY_VERSION
 
-PROMPT_VERSION = f"language-v1+{ANCHORS_VERSION}"
+PROMPT_VERSION = f"language-v2+{ANCHORS_VERSION}"
 MAX_EXPLANATION = 500
 DEFAULT_WORKERS = 8
 
@@ -56,7 +56,7 @@ Reply with JSON only, in exactly this shape:
 id>", "verdict": "VIOLATION" | "UNSURE" | "PASS", "span": "<exact quote from the \
 material, or null>", "confidence": <0 to 1>, "explanation": "<one sentence>"}]}
 Give exactly one verdict, for the given rule only. Quote the shortest exact \
-passage that breaks the rule. Use UNSURE when the rule does not clearly decide."""
+passage that breaks the rule. If nothing in the material is covered by the rule, the verdict is PASS. Use UNSURE only when the material is covered by the rule and it could reasonably go either way."""
 
 
 class ModelVerdict(BaseModel):
