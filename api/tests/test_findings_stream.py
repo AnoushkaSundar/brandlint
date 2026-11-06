@@ -420,3 +420,38 @@ def test_client_hands_content_to_the_engine(monkeypatch):
     source = ContentSource(data_class="public", text="Hi")
     assert engine_client.start_review("cv", "blog", 3, source) == "rev-1"
     assert calls == [("cv", "blog", 3, source)]
+
+
+def test_findings_and_chunks_reach_the_workflow(session_factory):
+    review_id = start(session_factory)
+    finished_run(review_id)
+    with session_factory() as session:
+        findings = reviews.list_findings(review_id, session)
+        chunks = reviews.list_chunks(review_id, session)
+    assert [f.tier for f in findings] == [0, 1]
+    assert [c.id for c in chunks] == ["cv1:0"]
+
+
+def test_findings_and_chunks_survive_a_restart(session_factory):
+    review_id = start(session_factory)
+    finished_run(review_id)
+    reviews._runs.pop(review_id)
+    with session_factory() as session:
+        assert len(reviews.list_findings(review_id, session)) == 2
+        assert [c.id for c in reviews.list_chunks(review_id, session)] == ["cv1:0"]
+
+
+def test_an_unknown_review_has_no_findings_and_an_unknown_status(session_factory):
+    with session_factory() as session:
+        assert reviews.list_findings("rev-lost", session) == []
+        assert reviews.list_chunks("rev-lost", session) == []
+        assert reviews.review_status("rev-lost", session) == "unknown"
+
+
+def test_the_client_reads_findings_from_the_real_engine(session_factory, monkeypatch):
+    monkeypatch.setenv("USE_MOCK_ENGINE", "false")
+    monkeypatch.setattr(engine_client, "get_sessionmaker", lambda: session_factory)
+    review_id = start(session_factory)
+    finished_run(review_id)
+    assert len(engine_client.list_findings(review_id)) == 2
+    assert len(engine_client.list_chunks(review_id)) == 1

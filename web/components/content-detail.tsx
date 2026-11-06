@@ -179,6 +179,12 @@ export function ContentDetail({ id }: { id: string }) {
             </a>
           </p>
         )}
+        {latest.fixes_applied && latest.file_name && (
+          <p className="mt-2 text-sm">
+            This text has the accepted fixes. The uploaded file hasn&apos;t
+            changed.
+          </p>
+        )}
         {latest.text && (
           <p className="mt-2 rounded-lg border p-4 text-sm whitespace-pre-wrap">
             {latest.text}
