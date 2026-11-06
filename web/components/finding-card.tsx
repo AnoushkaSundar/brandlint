@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 
+import { CommentThread } from "@/components/comment-thread";
 import { DecisionActions } from "@/components/decision-actions";
 import { FixPanel } from "@/components/fix-panel";
 import { SEVERITY_MARK } from "@/components/review-document";
@@ -22,6 +23,7 @@ import {
   sourceLabel,
   STATUS_LABELS,
 } from "@/lib/findingLabels";
+import type { Comment, CommentInput } from "@/lib/reviewDesk";
 import { cn } from "@/lib/utils";
 import type { DecisionInput, FindingStanding } from "@/lib/workflow";
 
@@ -171,22 +173,31 @@ export function FindingCard({
   selected,
   clauseRefs,
   standing,
+  comments,
+  versionId,
   onSelect,
   onDecide,
+  onComment,
 }: {
   contentId: string;
   finding: Finding;
   selected: boolean;
   clauseRefs: ReadonlyMap<string, string>;
   standing: FindingStanding | undefined;
+  comments: readonly Comment[];
+  versionId: string;
   onSelect: (findingId: string) => void;
   onDecide: (findingId: string, input: DecisionInput) => Promise<void>;
+  onComment: (input: CommentInput) => Promise<void>;
 }) {
   const confidence = confidenceLabel(finding);
   const source = sourceLabel(finding, clauseRefs);
   const allowed = standing?.allowed ?? [];
   const outcome = standing ? STATUS_LABELS[standing.status] : null;
   const decideThis = (input: DecisionInput) => onDecide(finding.id, input);
+  const onThisFinding = comments.filter(
+    (comment) => comment.finding_id === finding.id,
+  );
 
   return (
     <article
@@ -261,6 +272,21 @@ export function FindingCard({
       </div>
 
       <Trace finding={finding} />
+
+      <details>
+        <summary className="cursor-pointer font-medium">
+          Comments ({onThisFinding.length})
+        </summary>
+        <div className="mt-2">
+          <CommentThread
+            label="Comment on this finding"
+            comments={onThisFinding}
+            versionId={versionId}
+            findingId={finding.id}
+            onPost={onComment}
+          />
+        </div>
+      </details>
     </article>
   );
 }

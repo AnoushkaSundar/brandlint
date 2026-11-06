@@ -231,11 +231,13 @@ def start_review(content_id: str, user: Creator, session: SessionDep) -> Review:
         )
     latest = _versions(session, content_id)[0]
     previous = latest_review(session, content_id)
-    # Reviewing the same text again would only wipe the decisions made on it.
+    # Reviewing the same text against the same rules would only wipe the decisions.
+    # A new rulebook is a real reason to look again, for "Rules updated: re-check?".
     if (
         content.state == ContentState.resolving.value
         and previous is not None
         and previous.content_version_id == latest.id
+        and previous.rulebook_version == current_rulebook_version()
     ):
         raise HTTPException(
             status.HTTP_409_CONFLICT, "Add a new version to review it again."

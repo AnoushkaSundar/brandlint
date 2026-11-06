@@ -518,3 +518,16 @@ def test_a_new_version_can_be_reviewed_from_resolving(client_for, session):
     client.post(f"/content/{content_id}/versions", data={"text": "Better words"})
 
     assert client.post(f"/content/{content_id}/reviews").status_code == 201
+
+
+def test_a_new_rulebook_lets_unchanged_text_be_reviewed_again(
+    client_for, session, monkeypatch
+):
+    client = client_for()
+    content_id = create(client).json()["id"]
+    client.post(f"/content/{content_id}/reviews")
+    session.get(Content, content_id).state = "resolving"
+    session.commit()
+    monkeypatch.setattr("app.content.router.current_rulebook_version", lambda: 2)
+
+    assert client.post(f"/content/{content_id}/reviews").status_code == 201

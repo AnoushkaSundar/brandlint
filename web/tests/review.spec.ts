@@ -172,6 +172,9 @@ async function stubReview(
   await page.route("**/stub-api/admin/rulebook*", (route) =>
     route.fulfill({ json: RULES }),
   );
+  await page.route("**/stub-api/workflow/content/c1/comments", (route) =>
+    route.fulfill({ json: [] }),
+  );
   await page.route("**/stub-api/memory/precedents*", (route) =>
     route.fulfill({ json: [] }),
   );
@@ -939,7 +942,9 @@ test.describe("suggesting a fix", () => {
 
     await expect(card(page, "retired name")).toContainText("Fix accepted");
     await expect(suggestFix(page)).toHaveCount(0);
-    expect(decisions).toEqual([{ findingId: BASE.id, action: "accept_fix" }]);
+    expect(decisions).toEqual([
+      { findingId: BASE.id, action: "accept_fix", attempt: 1 },
+    ]);
   });
 
   test("editing starts from the suggestion and needs some text", async ({
@@ -1325,6 +1330,43 @@ test.describe("deciding on a finding", () => {
     await expect(field).toHaveValue("A quote");
   });
 
+  test("a reason form closes once the decision is saved", async ({ page }) => {
+    await stubReview(page);
+    await page.goto("/content/c1/review");
+
+    const found = card(page, low().explanation);
+    await found.getByRole("button", { name: "Override" }).click();
+    await found.getByLabel("Why should this be overridden?").fill("A quote");
+    await found.getByRole("button", { name: "Submit override" }).click();
+
+    await expect(found).toContainText("Override waiting for a reviewer");
+    await expect(found.getByLabel("Why should this be overridden?")).toHaveCount(
+      0,
+    );
+  });
+
+  test("a failed save keeps the edit", async ({ page }) => {
+    await stubReview(page);
+    await page.route(
+      "**/stub-api/workflow/content/c1/findings/*/decisions",
+      (route) =>
+        route.fulfill({ status: 409, json: { detail: "Not any more." } }),
+    );
+    await stubFixes(page, [{ json: fixFor(1) }]);
+    await page.goto("/content/c1/review");
+
+    const found = card(page, "retired name");
+    await found.getByRole("button", { name: "Suggest fix" }).click();
+    await found.getByRole("button", { name: "Edit" }).click();
+    await found.getByLabel("Your version").fill("My careful wording");
+    await found.getByRole("button", { name: "Save edit" }).click();
+
+    await expect(found.getByRole("alert")).toHaveText("Not any more.");
+    await expect(found.getByLabel("Your version")).toHaveValue(
+      "My careful wording",
+    );
+  });
+
   test("a refused fix shows why", async ({ page }) => {
     await stubReview(page);
     await page.route(
@@ -1553,7 +1595,46 @@ test.describe("moving content through the workflow", () => {
     await page.goto("/content/c1/review");
 
     await expect(bar(page)).toContainText("Status: AI review");
+    await expect(bar(page)).toContainText("The review is still running");
     expect(moves).toEqual([]);
+  });
+
+  test("moves on by itself once a dropped stream's run ends", async ({
+    page,
+  }) => {
+    await stubReview(page);
+    const blocked = {
+      ...boardFor(),
+      state: "ai_review" as const,
+      moves: [
+        {
+          to: "resolving" as const,
+          needs_reason: false,
+          blocked_by: "The review is still running",
+        },
+      ],
+    };
+    await stubBoard(page, blocked);
+    await page.route(
+      `**/stub-api/engine/reviews/${ENGINE_ID}/findings`,
+      (route) => route.abort(),
+    );
+    let reads = 0;
+    await page.route("**/stub-api/workflow/content/c1/board", (route) => {
+      reads += 1;
+      return route.fulfill({
+        json:
+          reads === 1
+            ? blocked
+            : {
+                ...blocked,
+                moves: [{ ...blocked.moves[0], blocked_by: null }],
+              },
+      });
+    });
+    await page.goto("/content/c1/review");
+
+    await expect(bar(page)).toContainText("Status: Resolving");
   });
 
   test("offers no moves on finished content", async ({ page }) => {

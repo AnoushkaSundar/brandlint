@@ -21,7 +21,7 @@ from app.contracts import (
     Severity,
     Verdict,
 )
-from app.workflow.fixes import fix_span, latest_offer, spans_overlap
+from app.workflow.fixes import can_apply, fix_span, latest_offer, spans_overlap
 from app.workflow.models import AuditLog, Decision, Review
 
 CREATOR_OVERRIDABLE = {Severity.low, Severity.medium}
@@ -43,6 +43,7 @@ FindingKey = tuple[str | None, str, str]
 class FindingProgress:
     status: FindingStatus = FindingStatus.open
     fix_text: str | None = None
+    reason: str | None = None
 
 
 def finding_progress(session: Session, review: Review) -> dict[str, FindingProgress]:
@@ -58,7 +59,9 @@ def finding_progress(session: Session, review: Review) -> dict[str, FindingProgr
         kept = earlier.fix_text if decision.action == KEEPS_FIX_TEXT else None
         progress[decision.finding_id] = FindingProgress(
             status=FindingStatus(decision.status),
-            fix_text=decision.fix_text or kept,
+            # An empty string is a real fix: it deletes the phrase.
+            fix_text=decision.fix_text if decision.fix_text is not None else kept,
+            reason=decision.reason,
         )
     return progress
 
@@ -76,7 +79,7 @@ def refused_overrides(session: Session, content_id: str) -> set[FindingKey]:
         .join(ContentVersion, Review.content_version_id == ContentVersion.id)
         .where(
             ContentVersion.content_id == content_id,
-            Decision.action == DecisionAction.reject_override.value,
+            Decision.status == FindingStatus.override_rejected.value,
         )
     ).all()
 
@@ -144,8 +147,14 @@ def _creator_actions(
 
 
 def _status_after(
-    action: DecisionAction, actor: User, finding: Finding
+    action: DecisionAction,
+    actor: User,
+    finding: Finding,
+    before: FindingStatus,
 ) -> FindingStatus:
+    # A rejected fix reopens the finding. It wasn't an override, so none is refused.
+    if action is DecisionAction.reject_override and before is FindingStatus.fix_edited:
+        return FindingStatus.open
     if action is DecisionAction.override:
         return (
             FindingStatus.override_confirmed
@@ -192,6 +201,7 @@ def record_decision(
     action: DecisionAction,
     reason: str | None,
     fix_text: str | None,
+    attempt: int | None = None,
 ) -> FindingStatus:
     """Checks and stores a decision and its audit entry. The caller commits."""
     reason = (reason or "").strip() or None
@@ -218,14 +228,25 @@ def record_decision(
         offer = latest_offer(session, review, finding.id)
         if offer is None:
             raise HTTPException(status.HTTP_409_CONFLICT, "Ask for a fix first.")
+        # The wording on the person's screen has to be the wording that's saved.
+        if attempt != offer.attempt:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT, "A newer fix was offered. Check it first."
+            )
         fix_text = offer.suggested
+    chunks = engine_client.list_chunks(review.engine_review_id) if action in FIXES else []
+    if action in FIXES and not can_apply(finding, chunks):
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "A fix can't change this text. A reviewer needs to settle it.",
+        )
     if action in FIXES and _overlaps_a_fix(finding, findings, progress):
         raise HTTPException(
             status.HTTP_409_CONFLICT,
             "This overlaps a fix already saved. A reviewer needs to settle it.",
         )
 
-    after = _status_after(action, actor, finding)
+    after = _status_after(action, actor, finding, before)
     session.add(
         Decision(
             review_id=review.id,

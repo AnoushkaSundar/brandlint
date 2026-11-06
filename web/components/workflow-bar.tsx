@@ -81,8 +81,14 @@ export function WorkflowBar({
   board: Board;
   onMove: (to: ContentState, reason?: string) => Promise<void>;
 }) {
-  // Leaving AI review happens by itself when the stream ends, so it's never a button.
-  const moves = board.moves.filter((move) => board.state !== "ai_review" || move.to !== "resolving");
+  // Leaving AI review happens by itself when the run ends, so it's never a button.
+  const inAiReview = board.state === "ai_review";
+  const moves = board.moves.filter(
+    (move) => !inAiReview || move.to !== "resolving",
+  );
+  const waiting = inAiReview
+    ? board.moves.find((move) => move.to === "resolving")?.blocked_by
+    : null;
 
   return (
     <section
@@ -92,6 +98,7 @@ export function WorkflowBar({
       <p>
         Status: <span className="font-medium">{STATE_LABELS[board.state]}</span>
       </p>
+      {waiting && <p>{waiting}</p>}
       {board.legal_required && (
         <p>A high-severity claim means legal must sign this off.</p>
       )}
