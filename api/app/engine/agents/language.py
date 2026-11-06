@@ -137,7 +137,9 @@ def build_payload(
 
 
 def _parse(raw: dict[str, Any], rule: Rule) -> ModelVerdict:
-    """Validate the reply. Raises ValueError for anything off schema."""
+    """Validate the reply. Raises TypeError or ValueError for anything off schema."""
+    if not isinstance(raw, dict):
+        raise TypeError("expected a JSON object")
     if set(raw) == {"content"} and isinstance(raw["content"], str):
         # The gateway hands back non-JSON text as-is; models often fence it.
         raw = json.loads(_FENCE.sub("", raw["content"]))
@@ -231,7 +233,7 @@ def judge(
     try:
         result = _parse(raw, rule)
         control_ok = _control_passed(raw, expected)
-    except (ValueError, ValidationError):
+    except (TypeError, ValueError, ValidationError):
         return unsure("Model reply did not match the required format.")
 
     if not control_ok:

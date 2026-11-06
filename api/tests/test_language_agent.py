@@ -199,3 +199,15 @@ def test_review_chunks_covers_all_pairs_concurrently_in_stable_order():
 
     found = language.review_chunks(chunks, CTX, classify, model="m", max_workers=2)
     assert [f.spans[0]["chunk_id"] for f in found] == [c.id for c in chunks]
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [[], [{"rule_id": "R-TONE-02"}], 7, 1.5, True, None, "PASS"],
+)
+def test_a_reply_that_is_not_an_object_fails_closed(raw):
+    assert run(chunk(), raw).verdict == Verdict.UNSURE
+
+
+def test_a_fenced_reply_that_is_not_an_object_fails_closed():
+    assert run(chunk(), {"content": "```json\n[1, 2]\n```"}).verdict == Verdict.UNSURE
