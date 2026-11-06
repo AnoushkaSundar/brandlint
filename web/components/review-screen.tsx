@@ -4,8 +4,8 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { FindingCard } from "@/components/finding-card";
-import type { FixDecision } from "@/components/fix-panel";
 import { ReviewDocument } from "@/components/review-document";
+import { WorkflowBar } from "@/components/workflow-bar";
 import { getRulebook } from "@/lib/admin";
 import { ApiError } from "@/lib/api";
 import {
@@ -13,10 +13,18 @@ import {
   getContent,
   versionFilePath,
 } from "@/lib/content";
-import type { Chunk, Finding } from "@/lib/contracts";
+import type { Chunk, ContentState, Finding } from "@/lib/contracts";
 import { getChunks, streamFindings } from "@/lib/engineClient";
-import { trackProgress } from "@/lib/findingLabels";
+import { trackProgress, UNSETTLED } from "@/lib/findingLabels";
 import { sortFindings } from "@/lib/highlights";
+import {
+  type Board,
+  decide,
+  type DecisionInput,
+  type FindingStanding,
+  getBoard,
+  moveContent,
+} from "@/lib/workflow";
 
 type StreamState = "streaming" | "done" | "error";
 
@@ -29,7 +37,7 @@ function Findings({
   streamState,
   selectedId,
   clauseRefs,
-  decisions,
+  standings,
   onSelect,
   onDecide,
 }: {
@@ -37,9 +45,9 @@ function Findings({
   streamState: StreamState;
   selectedId: string | null;
   clauseRefs: ReadonlyMap<string, string>;
-  decisions: ReadonlyMap<string, FixDecision>;
+  standings: ReadonlyMap<string, FindingStanding>;
   onSelect: (findingId: string) => void;
-  onDecide: (findingId: string, action: FixDecision, text: string) => void;
+  onDecide: (findingId: string, input: DecisionInput) => Promise<void>;
 }) {
   return (
     <>
@@ -87,7 +95,7 @@ function Findings({
               finding={finding}
               selected={finding.id === selectedId}
               clauseRefs={clauseRefs}
-              decision={decisions.get(finding.id)}
+              standing={standings.get(finding.id)}
               onSelect={onSelect}
               onDecide={onDecide}
             />
@@ -107,9 +115,8 @@ export function ReviewScreen({ id }: { id: string }) {
   const [clauseRefs, setClauseRefs] = useState<ReadonlyMap<string, string>>(
     new Map(),
   );
-  const [decisions, setDecisions] = useState<
-    ReadonlyMap<string, FixDecision>
-  >(new Map());
+  const [board, setBoard] = useState<Board | null>(null);
+  const leftAiReview = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const documentRef = useRef<HTMLDivElement>(null);
 
@@ -178,6 +185,33 @@ export function ReviewScreen({ id }: { id: string }) {
     };
   }, [reviewId]);
 
+  useEffect(() => {
+    if (streamState !== "done") return;
+    let current = true;
+    getBoard(id).then(
+      (loaded) => {
+        if (current) setBoard(loaded);
+      },
+      (caught: ApiError) => {
+        if (current) setError(caught.message);
+      },
+    );
+    return () => {
+      current = false;
+    };
+  }, [id, streamState]);
+
+  useEffect(() => {
+    const canLeave =
+      board?.state === "ai_review" &&
+      board.moves.some((move) => move.to === "resolving");
+    if (!canLeave || leftAiReview.current) return;
+    leftAiReview.current = true;
+    moveContent(id, "resolving").then(setBoard, (caught: ApiError) =>
+      setError(caught.message),
+    );
+  }, [board, id]);
+
   const findings = useMemo(
     () =>
       sortFindings(
@@ -194,8 +228,25 @@ export function ReviewScreen({ id }: { id: string }) {
       ?.scrollIntoView({ block: "center", behavior: "smooth" });
   }
 
-  function decideFix(findingId: string, action: FixDecision) {
-    setDecisions((existing) => new Map(existing).set(findingId, action));
+  const standings = useMemo(
+    () => new Map(board?.findings.map((item) => [item.id, item])),
+    [board],
+  );
+
+  const unsettled = useMemo(
+    () =>
+      findings.filter((finding) =>
+        UNSETTLED.includes(standings.get(finding.id)?.status ?? "open"),
+      ),
+    [findings, standings],
+  );
+
+  async function decideFinding(findingId: string, input: DecisionInput) {
+    setBoard(await decide(id, findingId, input));
+  }
+
+  async function move(to: ContentState, reason?: string) {
+    setBoard(await moveContent(id, to, reason));
   }
 
   const backLink = (
@@ -267,11 +318,13 @@ export function ReviewScreen({ id }: { id: string }) {
         </p>
       )}
 
+      {board && <WorkflowBar board={board} onMove={move} />}
+
       <div className="mt-5 grid gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <section aria-label="Content being reviewed" ref={documentRef}>
           <ReviewDocument
             chunks={chunks}
-            findings={findings}
+            findings={unsettled}
             selectedId={selectedId}
             imagePath={
               reviewed?.file_name ? versionFilePath(reviewed.id) : null
@@ -286,9 +339,9 @@ export function ReviewScreen({ id }: { id: string }) {
             streamState={streamState}
             selectedId={selectedId}
             clauseRefs={clauseRefs}
-            decisions={decisions}
+            standings={standings}
             onSelect={selectFinding}
-            onDecide={decideFix}
+            onDecide={decideFinding}
           />
         </section>
       </div>

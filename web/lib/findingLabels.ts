@@ -1,4 +1,9 @@
-import type { CheckType, Finding, Severity } from "@/lib/contracts";
+import type {
+  CheckType,
+  Finding,
+  FindingStatus,
+  Severity,
+} from "@/lib/contracts";
 
 export const SEVERITY_LABELS: Record<Severity, string> = {
   low: "Low",
@@ -18,6 +23,23 @@ export const CHECK_LABELS: Record<CheckType, string> = {
   required_element: "Required element",
   tone_drift: "Tone drift",
 };
+
+export const STATUS_LABELS: Record<FindingStatus, string | null> = {
+  open: null,
+  fix_accepted: "Fix accepted",
+  fix_edited: "Edited fix saved",
+  override_pending: "Override waiting for a reviewer",
+  override_confirmed: "Override confirmed",
+  override_rejected: "Override rejected",
+  resolved: "Resolved",
+};
+
+/** These still need someone's attention, so they stay highlighted. */
+export const UNSETTLED: readonly FindingStatus[] = [
+  "open",
+  "override_pending",
+  "override_rejected",
+];
 
 /** An UNSURE finding can carry no confidence at all, which isn't the same as 0%. */
 export function confidenceLabel(finding: Finding): string | null {
