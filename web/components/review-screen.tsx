@@ -35,6 +35,8 @@ import {
 
 type StreamState = "streaming" | "done" | "error";
 
+const BOARD_POLL_MS = 2000;
+
 function findingCount(count: number): string {
   return count === 1 ? "1 finding" : `${count} findings`;
 }
@@ -248,9 +250,24 @@ export function ReviewScreen({ id }: { id: string }) {
       );
     if (!canLeave || leftAiReview.current) return;
     leftAiReview.current = true;
-    moveContent(id, "resolving").then(setBoard, (caught: ApiError) =>
-      setError(caught.message),
-    );
+    moveContent(id, "resolving").then(setBoard, (caught: ApiError) => {
+      leftAiReview.current = false;
+      setError(caught.message);
+    });
+  }, [board, id]);
+
+  useEffect(() => {
+    // A dropped stream says nothing more, so keep asking until the run has ended.
+    const waiting =
+      board?.state === "ai_review" &&
+      board.moves.some(
+        (move) => move.to === "resolving" && move.blocked_by !== null,
+      );
+    if (!waiting) return;
+    const timer = setTimeout(() => {
+      getBoard(id).then(setBoard, () => setBoard({ ...board }));
+    }, BOARD_POLL_MS);
+    return () => clearTimeout(timer);
   }, [board, id]);
 
   const findings = useMemo(

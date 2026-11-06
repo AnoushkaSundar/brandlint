@@ -30,6 +30,9 @@ const QUEUE: Queue = {
       severity: "medium",
       check: "tone",
       explanation: "This might be too pushy.",
+      rule_id: "R-TONE-01",
+      fact_ids: [],
+      cited_text: "Be warm, never pushy.",
       reason: null,
       fix_text: null,
     },
@@ -43,6 +46,9 @@ const QUEUE: Queue = {
       severity: "low",
       check: "terminology",
       explanation: "This uses a banned word.",
+      rule_id: "R-TERM-03",
+      fact_ids: [],
+      cited_text: "Say new hire.",
       reason: "It's a direct quote",
       fix_text: null,
     },
@@ -56,11 +62,15 @@ const QUEUE: Queue = {
       severity: "low",
       check: "terminology",
       explanation: "This uses an old name.",
+      rule_id: "R-TERM-02",
+      fact_ids: ["F-001"],
+      cited_text: "The product is Tarnhollow Landing.",
       reason: null,
       fix_text: "The Landing app",
     },
   ],
   ready: [{ ...CONTENT, id: "c3", title: "Ready piece" }] as Queue["ready"],
+  unavailable: [],
 };
 
 async function signedInAs(page: Page, role: Role) {
@@ -116,6 +126,52 @@ test.describe("review queue", () => {
     ).toHaveAttribute("href", "/content/c1/review");
   });
 
+  test("shows the source of every item", async ({ page }) => {
+    await page.route("**/stub-api/workflow/queue", (route) =>
+      route.fulfill({ json: QUEUE }),
+    );
+    await page.goto("/queue");
+
+    const last = page
+      .getByRole("region", { name: "Decisions needed" })
+      .getByRole("listitem")
+      .last();
+    await expect(last.locator("blockquote")).toHaveText(
+      "The product is Tarnhollow Landing.",
+    );
+    await expect(last.locator("figcaption")).toHaveText("R-TERM-02 · F-001");
+  });
+
+  test("names a finding only a reviewer can clear", async ({ page }) => {
+    await page.route("**/stub-api/workflow/queue", (route) =>
+      route.fulfill({
+        json: {
+          ...QUEUE,
+          items: [{ ...QUEUE.items[0], kind: "needs_override" }],
+        },
+      }),
+    );
+    await page.goto("/queue");
+
+    await expect(page.locator("main")).toContainText(
+      "Only a reviewer can clear this",
+    );
+  });
+
+  test("says when a piece couldn't load and keeps the rest", async ({ page }) => {
+    await page.route("**/stub-api/workflow/queue", (route) =>
+      route.fulfill({ json: { ...QUEUE, unavailable: ["Broken piece"] } }),
+    );
+    await page.goto("/queue");
+
+    await expect(page.locator("main").getByRole("alert")).toContainText(
+      "Broken piece",
+    );
+    await expect(
+      page.getByRole("region", { name: "Decisions needed" }),
+    ).toBeVisible();
+  });
+
   test("lists pieces ready for review", async ({ page }) => {
     await page.route("**/stub-api/workflow/queue", (route) =>
       route.fulfill({ json: QUEUE }),
@@ -131,7 +187,7 @@ test.describe("review queue", () => {
 
   test("says when nothing is waiting", async ({ page }) => {
     await page.route("**/stub-api/workflow/queue", (route) =>
-      route.fulfill({ json: { items: [], ready: [] } }),
+      route.fulfill({ json: { items: [], ready: [], unavailable: [] } }),
     );
     await page.goto("/queue");
 

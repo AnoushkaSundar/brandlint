@@ -14,10 +14,13 @@ export type QueueItem = {
   channel: string;
   state: ContentState;
   finding_id: string;
-  kind: "unsure" | "override" | "fix";
+  kind: "unsure" | "override" | "fix" | "needs_override";
   severity: Severity;
   check: CheckType;
   explanation: string;
+  rule_id: string | null;
+  fact_ids: string[];
+  cited_text: string;
   reason: string | null;
   fix_text: string | null;
 };
@@ -25,6 +28,7 @@ export type QueueItem = {
 export type Queue = {
   items: QueueItem[];
   ready: ContentSummary[];
+  unavailable: string[];
 };
 
 export type Comment = {

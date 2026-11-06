@@ -14,6 +14,7 @@ const KIND_LABELS: Record<QueueItem["kind"], string> = {
   unsure: "Needs a decision",
   override: "Override to check",
   fix: "Fix to sign off",
+  needs_override: "Only a reviewer can clear this",
 };
 
 function Item({ item }: { item: QueueItem }) {
@@ -34,6 +35,12 @@ function Item({ item }: { item: QueueItem }) {
         </span>
       </div>
       <p>{item.explanation}</p>
+      <figure className="border-l-2 pl-3">
+        <blockquote>{item.cited_text}</blockquote>
+        <figcaption className="mt-1 text-xs text-muted-foreground">
+          {[item.rule_id, ...item.fact_ids].filter(Boolean).join(" · ")}
+        </figcaption>
+      </figure>
       {item.kind === "override" && item.reason && (
         <p>Creator&apos;s reason: {item.reason}</p>
       )}
@@ -73,8 +80,7 @@ export function QueueScreen() {
     <div className="mx-auto w-full max-w-3xl">
       <h1 className="text-2xl font-semibold tracking-tight">Review queue</h1>
       <p className="mt-2 text-muted-foreground">
-        UNSURE findings, pending overrides and fixes to sign off, most
-        serious first.
+        Everything that needs a reviewer, most serious first.
       </p>
 
       {error && (
@@ -88,6 +94,12 @@ export function QueueScreen() {
       {!queue && !error && (
         <p role="status" className="mt-4 text-sm text-muted-foreground">
           Loading…
+        </p>
+      )}
+      {queue && queue.unavailable.length > 0 && (
+        <p role="alert" className="mt-4 rounded-lg border border-destructive p-3 text-sm">
+          Couldn&apos;t load: {queue.unavailable.join(", ")}. Try again in a
+          moment.
         </p>
       )}
       {empty && (
