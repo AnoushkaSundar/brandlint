@@ -23,7 +23,7 @@ FINDINGS = ROOT / "findings"
 
 RULEBOOK_VERSION = 1
 CHANNELS = ["blog", "linkedin", "email", "ad", "banner", "document"]
-SMALL_MODEL = "claude-haiku-5-5"
+SMALL_MODEL = "claude-haiku-4-5"
 SECOND_MODEL = "gpt-6-luna"
 
 PALETTE = [
@@ -242,6 +242,13 @@ SECTIONS = [
 # The admin keeps the first of the two conflicting rules, so the second stays a draft.
 UNAPPROVED_RULES = {"R-TERM-04"}
 
+# The exact text each must_include rule looks for, which is different from the
+# sentence describing the rule.
+REQUIRED_TEXT = {
+    "R-REQ-01": "Results vary by organisation.",
+    "R-REQ-02": "tarnhollow.example",
+}
+
 FACTS = [
     (
         "F-001",
@@ -342,11 +349,15 @@ TERMS = [
         "preferred": "Tarnhollow Landing",
         "banned": ["Tarnhollow Onramp", "Onramp"],
         "renamed_from": "Tarnhollow Onramp",
+        "rule_id": "R-TERM-02",
+        "rule_version": RULEBOOK_VERSION,
     },
     {
         "id": "T-002",
         "preferred": "new hire",
         "banned": ["newbie", "newbies", "fresher", "freshers"],
+        "rule_id": "R-TERM-03",
+        "rule_version": RULEBOOK_VERSION,
     },
     {
         "id": "T-003",
@@ -357,6 +368,8 @@ TERMS = [
             "market-leading",
             "revolutionary",
         ],
+        "rule_id": "R-TERM-01",
+        "rule_version": RULEBOOK_VERSION,
     },
     {"id": "T-004", "preferred": "Tarnhollow", "banned": ["TarnHollow", "Tarn Hollow"]},
 ]
@@ -429,18 +442,19 @@ def build_rules():
     rules = []
     for number, _, _, entries in SECTIONS:
         for index, (rule_id, kind, severity, channels, text) in enumerate(entries, 1):
-            rules.append(
-                {
-                    "id": rule_id,
-                    "version": RULEBOOK_VERSION,
-                    "type": kind,
-                    "text": text,
-                    "clause_ref": f"§{number}.{index}",
-                    "severity": severity,
-                    "channel_scope": channels,
-                    "status": "draft" if rule_id in UNAPPROVED_RULES else "approved",
-                }
-            )
+            rule = {
+                "id": rule_id,
+                "version": RULEBOOK_VERSION,
+                "type": kind,
+                "text": text,
+                "clause_ref": f"§{number}.{index}",
+                "severity": severity,
+                "channel_scope": channels,
+                "status": "draft" if rule_id in UNAPPROVED_RULES else "approved",
+            }
+            if rule_id in REQUIRED_TEXT:
+                rule["required_text"] = REQUIRED_TEXT[rule_id]
+            rules.append(rule)
     return rules
 
 
