@@ -15,6 +15,8 @@ class Review(Base):
     content_version_id: Mapped[str] = mapped_column(
         ForeignKey("content_versions.id"), index=True
     )
+    # The engine's id for this review, which the findings stream is read by.
+    engine_review_id: Mapped[str] = mapped_column(String(64))
     channel: Mapped[str] = mapped_column(String(32))
     # Pinned when the review starts, so later rule changes can't alter it.
     rulebook_version: Mapped[int] = mapped_column(Integer)

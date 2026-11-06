@@ -5,6 +5,7 @@ import json
 import os
 from collections import Counter
 from collections.abc import AsyncIterator
+from hashlib import sha256
 
 from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import StreamingResponse
@@ -98,6 +99,33 @@ def start_review(channel: str) -> dict:
 @router.post("/reviews")
 def post_review(body: ReviewRequest) -> dict:
     return start_review(body.channel)
+
+
+def _chunk_kind(chunk_id: str) -> str:
+    if chunk_id.endswith("-h1"):
+        return "heading"
+    return "image" if chunk_id.endswith("-image") else "paragraph"
+
+
+@router.get("/reviews/{review_id}/chunks")
+def list_chunks(review_id: str) -> list[dict]:
+    """Returns the contract's Chunk shape, which the review screen highlights from."""
+    piece = data.piece_for_review(review_id)
+    if piece is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Review not found")
+    return [
+        {
+            "id": chunk_id,
+            "content_version_id": f"cv-demo-{piece}-1",
+            "ordinal": ordinal,
+            "kind": _chunk_kind(chunk_id),
+            "text": text,
+            "content_hash": sha256(text.encode()).hexdigest(),
+            "data_class": "public",
+            "style": None,
+        }
+        for ordinal, (chunk_id, text) in enumerate(data.chunks_for_piece(piece).items())
+    ]
 
 
 @router.get("/reviews/{review_id}/findings")

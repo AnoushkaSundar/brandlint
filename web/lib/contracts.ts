@@ -125,6 +125,7 @@ export type Rule = {
   channel_scope: string[];
   status: RuleStatus;
   supersedes?: string | null;
+  required_text?: string | null;
 };
 
 export type Fact = {
@@ -143,6 +144,8 @@ export type Term = {
   preferred: string;
   banned: string[];
   renamed_from?: string | null;
+  rule_id?: string | null;
+  rule_version?: number | null;
 };
 
 export type Asset = {
@@ -198,6 +201,19 @@ export type ProposalEval = {
   passed: boolean;
   precision: number;
   recall: number;
+};
+
+export type ChunkKind = "heading" | "paragraph" | "image";
+
+export type Chunk = {
+  id: string;
+  content_version_id: string;
+  ordinal: number;
+  kind: ChunkKind;
+  text: string;
+  content_hash: string;
+  data_class: DataClass;
+  style?: Record<string, unknown> | null;
 };
 
 export type Proposal = {

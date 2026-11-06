@@ -3,7 +3,14 @@
 from __future__ import annotations
 
 import pytest
-from app.contracts import CheckType, Finding, Rule, Severity, Verdict
+from app.contracts import (
+    CheckType,
+    ContentSource,
+    Finding,
+    Rule,
+    Severity,
+    Verdict,
+)
 from pydantic import ValidationError
 
 _FINDING_BASE = {
@@ -109,3 +116,21 @@ def test_v2_chunk_model():
     assert chunk.style is None
     assert chunk.data_class.value == "internal"
 
+
+
+def test_content_source_accepts_pasted_text_or_an_upload():
+    assert ContentSource(data_class="public", text="Hello").file_bytes is None
+    upload = ContentSource(
+        data_class="internal", file_name="post.docx", file_bytes=b"PK"
+    )
+    assert upload.text == ""
+
+
+def test_content_source_rejects_empty_content():
+    with pytest.raises(ValidationError):
+        ContentSource(data_class="public")
+
+
+def test_content_source_rejects_bytes_with_no_format():
+    with pytest.raises(ValidationError):
+        ContentSource(data_class="public", file_bytes=b"PK")

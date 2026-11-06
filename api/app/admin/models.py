@@ -21,6 +21,7 @@ class Rule(Base):
     channel_scope: Mapped[list[str]] = mapped_column(JSON, default=list)
     status: Mapped[str] = mapped_column(String(16), default="draft")
     supersedes: Mapped[str | None] = mapped_column(String(64))
+    required_text: Mapped[str | None] = mapped_column(Text)
 
 
 class Fact(Base):
@@ -43,6 +44,8 @@ class Term(Base):
     preferred: Mapped[str] = mapped_column(String(255))
     banned: Mapped[list[str]] = mapped_column(JSON, default=list)
     renamed_from: Mapped[str | None] = mapped_column(String(255))
+    rule_id: Mapped[str | None] = mapped_column(String(64))
+    rule_version: Mapped[int | None] = mapped_column(Integer)
 
 
 class Asset(Base):

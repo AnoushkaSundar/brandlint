@@ -26,6 +26,7 @@ from .enums import (
 from .models import (
     Asset,
     Chunk,
+    ContentSource,
     Decision,
     Fact,
     Finding,
@@ -48,6 +49,7 @@ __all__ = [
     "AssetKind",
     "CheckType",
     "Chunk",
+    "ContentSource",
     "ContentState",
     "DataClass",
     "Decision",

@@ -226,7 +226,8 @@
       "linkedin",
       "ad"
     ],
-    "status": "approved"
+    "status": "approved",
+    "required_text": "Results vary by organisation."
   },
   {
     "id": "R-REQ-02",
@@ -238,7 +239,8 @@
     "channel_scope": [
       "blog"
     ],
-    "status": "approved"
+    "status": "approved",
+    "required_text": "tarnhollow.example"
   },
   {
     "id": "R-VIS-01",

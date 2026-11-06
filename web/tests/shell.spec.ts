@@ -61,6 +61,9 @@ async function signInAs(page: Page, role: RoleName) {
   await page.route("**/stub-api/auth/me", (route) =>
     route.fulfill({ json: userFor(role) }),
   );
+  await page.route("**/stub-api/content", (route) =>
+    route.fulfill({ json: [] }),
+  );
 }
 
 async function signedOut(page: Page) {
