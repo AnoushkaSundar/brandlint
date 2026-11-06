@@ -5,7 +5,7 @@ import { useState } from "react";
 import { ReasonForm } from "@/components/reason-form";
 import { Button } from "@/components/ui/button";
 import { ApiError } from "@/lib/api";
-import type { DecisionAction } from "@/lib/contracts";
+import type { DecisionAction, FindingStatus } from "@/lib/contracts";
 import type { DecisionInput } from "@/lib/workflow";
 
 const REASON_ACTIONS = [
@@ -29,18 +29,37 @@ const REASON_ACTIONS = [
   },
 ] as const;
 
+// Signing off a fix uses the same two actions, but it isn't an override.
+const FIX_ACTIONS = [
+  {
+    action: "reject_override",
+    button: "Reject fix",
+    label: "Why is this fix rejected?",
+    submit: "Reject",
+  },
+  {
+    action: "resolve",
+    button: "Sign off",
+    label: "Why is this fix fine?",
+    submit: "Sign off",
+  },
+] as const;
+
 export function DecisionActions({
   allowed,
+  status,
   onDecide,
 }: {
   allowed: readonly DecisionAction[];
+  status: FindingStatus;
   onDecide: (input: DecisionInput) => Promise<void>;
 }) {
   const [opened, setOpened] = useState<DecisionAction | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const form = REASON_ACTIONS.find(({ action }) => action === opened);
+  const actions = status === "fix_edited" ? FIX_ACTIONS : REASON_ACTIONS;
+  const form = actions.find(({ action }) => action === opened);
   if (form) {
     return (
       <ReasonForm
@@ -68,8 +87,9 @@ export function DecisionActions({
           Confirm override
         </Button>
       )}
-      {REASON_ACTIONS.filter(({ action }) => allowed.includes(action)).map(
-        ({ action, button }) => (
+      {actions
+        .filter(({ action }) => allowed.includes(action))
+        .map(({ action, button }) => (
           <Button
             key={action}
             type="button"
@@ -79,8 +99,7 @@ export function DecisionActions({
           >
             {button}
           </Button>
-        ),
-      )}
+        ))}
       {error && (
         <p role="alert" className="w-full border-l-2 border-destructive pl-2">
           {error}

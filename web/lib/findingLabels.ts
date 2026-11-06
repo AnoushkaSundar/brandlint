@@ -27,7 +27,7 @@ export const CHECK_LABELS: Record<CheckType, string> = {
 export const STATUS_LABELS: Record<FindingStatus, string | null> = {
   open: null,
   fix_accepted: "Fix accepted",
-  fix_edited: "Edited fix saved",
+  fix_edited: "Fix waiting for a reviewer",
   override_pending: "Override waiting for a reviewer",
   override_confirmed: "Override confirmed",
   override_rejected: "Override rejected",
@@ -39,7 +39,13 @@ export const UNSETTLED: readonly FindingStatus[] = [
   "open",
   "override_pending",
   "override_rejected",
+  "fix_edited",
 ];
+
+/** A zero-length span marks no text, so it counts as the whole document. */
+export function isDocumentLevel(finding: Finding): boolean {
+  return finding.spans.every((span) => span.end <= span.start);
+}
 
 /** An UNSURE finding can carry no confidence at all, which isn't the same as 0%. */
 export function confidenceLabel(finding: Finding): string | null {

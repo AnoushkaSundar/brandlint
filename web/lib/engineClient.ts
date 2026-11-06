@@ -2,7 +2,6 @@ import { apiFetch, apiUrl } from "@/lib/api";
 import type {
   Chunk,
   Finding,
-  FixSuggestion,
   Precedent,
   Verdict,
 } from "@/lib/contracts";
@@ -21,12 +20,6 @@ type StreamHandlers = {
 
 export function getChunks(reviewId: string): Promise<Chunk[]> {
   return apiFetch<Chunk[]>(`/engine/reviews/${reviewId}/chunks`);
-}
-
-export function requestFix(findingId: string): Promise<FixSuggestion> {
-  return apiFetch<FixSuggestion>(`/engine/findings/${findingId}/fix`, {
-    method: "POST",
-  });
 }
 
 export function replayVerdict(findingId: string): Promise<ReplayResult> {

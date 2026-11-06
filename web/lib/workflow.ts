@@ -3,6 +3,7 @@ import type {
   ContentState,
   DecisionAction,
   FindingStatus,
+  FixSuggestion,
 } from "@/lib/contracts";
 
 export type FindingStanding = {
@@ -33,6 +34,19 @@ export type DecisionInput = {
 
 export function getBoard(contentId: string): Promise<Board> {
   return apiFetch<Board>(`/workflow/content/${contentId}/board`);
+}
+
+/** `again` spends an attempt. Without it, the stored suggestion comes back. */
+export function offerFix(
+  contentId: string,
+  findingId: string,
+  again: boolean,
+): Promise<FixSuggestion> {
+  const finding = encodeURIComponent(findingId);
+  return apiFetch<FixSuggestion>(
+    `/workflow/content/${contentId}/findings/${finding}/fix`,
+    { method: "POST", body: JSON.stringify({ again }) },
+  );
 }
 
 export function decide(

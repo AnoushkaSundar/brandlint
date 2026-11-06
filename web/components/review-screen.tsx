@@ -33,6 +33,7 @@ function findingCount(count: number): string {
 }
 
 function Findings({
+  contentId,
   findings,
   streamState,
   selectedId,
@@ -41,6 +42,7 @@ function Findings({
   onSelect,
   onDecide,
 }: {
+  contentId: string;
   findings: readonly Finding[];
   streamState: StreamState;
   selectedId: string | null;
@@ -56,9 +58,11 @@ function Findings({
           Findings
         </h2>
         <p role="status" className="text-sm text-muted-foreground">
-          {streamState === "done"
-            ? `Finished: ${findingCount(findings.length)}`
-            : `Checking… ${findingCount(findings.length)} so far`}
+          {streamState === "done" && `Finished: ${findingCount(findings.length)}`}
+          {streamState === "streaming" &&
+            `Checking… ${findingCount(findings.length)} so far`}
+          {streamState === "error" &&
+            `Stopped: ${findingCount(findings.length)} so far`}
         </p>
       </div>
 
@@ -67,7 +71,9 @@ function Findings({
           <li key={track.label}>
             {track.label}: {track.count}
             <span className="text-muted-foreground">
-              {track.done ? ", done" : ", checking"}
+              {track.done && ", done"}
+              {!track.done &&
+                (streamState === "error" ? ", stopped" : ", checking")}
             </span>
           </li>
         ))}
@@ -92,6 +98,7 @@ function Findings({
         {findings.map((finding) => (
           <li key={finding.id}>
             <FindingCard
+              contentId={contentId}
               finding={finding}
               selected={finding.id === selectedId}
               clauseRefs={clauseRefs}
@@ -186,7 +193,7 @@ export function ReviewScreen({ id }: { id: string }) {
   }, [reviewId]);
 
   useEffect(() => {
-    if (streamState !== "done") return;
+    if (streamState === "streaming") return;
     let current = true;
     getBoard(id).then(
       (loaded) => {
@@ -204,7 +211,9 @@ export function ReviewScreen({ id }: { id: string }) {
   useEffect(() => {
     const canLeave =
       board?.state === "ai_review" &&
-      board.moves.some((move) => move.to === "resolving");
+      board.moves.some(
+        (move) => move.to === "resolving" && move.blocked_by === null,
+      );
     if (!canLeave || leftAiReview.current) return;
     leftAiReview.current = true;
     moveContent(id, "resolving").then(setBoard, (caught: ApiError) =>
@@ -335,6 +344,7 @@ export function ReviewScreen({ id }: { id: string }) {
         </section>
         <section aria-labelledby="findings-heading">
           <Findings
+            contentId={id}
             findings={findings}
             streamState={streamState}
             selectedId={selectedId}

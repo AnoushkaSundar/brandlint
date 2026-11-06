@@ -527,11 +527,17 @@ async function stubFixes(
   answers: { status?: number; json: unknown }[],
 ) {
   let call = 0;
-  await page.route("**/stub-api/engine/findings/*/fix", (route) => {
-    const answer = answers[Math.min(call, answers.length - 1)];
-    call += 1;
-    return route.fulfill(answer);
-  });
+  const asked: boolean[] = [];
+  await page.route(
+    "**/stub-api/workflow/content/c1/findings/*/fix",
+    (route) => {
+      asked.push(route.request().postDataJSON().again);
+      const answer = answers[Math.min(call, answers.length - 1)];
+      call += 1;
+      return route.fulfill(answer);
+    },
+  );
+  return asked;
 }
 
 test.describe("comparing words", () => {
@@ -839,6 +845,37 @@ test.describe("finding cards", () => {
     );
   });
 
+  test("a zero-length span counts as the whole document", async ({ page }) => {
+    await stubReview(page, {
+      findings: [
+        {
+          ...BASE,
+          unit_type: "document",
+          spans: [{ chunk_id: "blog-p1", start: 0, end: 0 }],
+          explanation: "The disclaimer is missing.",
+        },
+      ],
+    });
+    await page.goto("/content/c1/review");
+
+    await expect(card(page, "disclaimer is missing")).toContainText(
+      "Applies to the whole document.",
+    );
+  });
+
+  test("tracks say stopped after a dropped stream", async ({ page }) => {
+    await stubReview(page);
+    await page.route(
+      `**/stub-api/engine/reviews/${ENGINE_ID}/findings`,
+      (route) => route.abort(),
+    );
+    await page.goto("/content/c1/review");
+
+    const progress = page.getByRole("list", { name: "Progress" });
+    await expect(progress).toContainText("Code checks: 0, stopped");
+    await expect(progress).not.toContainText("checking");
+  });
+
   test("progress is shown for every track", async ({ page }) => {
     await stubReview(page);
     await page.goto("/content/c1/review");
@@ -902,13 +939,7 @@ test.describe("suggesting a fix", () => {
 
     await expect(card(page, "retired name")).toContainText("Fix accepted");
     await expect(suggestFix(page)).toHaveCount(0);
-    expect(decisions).toEqual([
-      {
-        findingId: BASE.id,
-        action: "accept_fix",
-        fix_text: "Tarnhollow Landing",
-      },
-    ]);
+    expect(decisions).toEqual([{ findingId: BASE.id, action: "accept_fix" }]);
   });
 
   test("editing starts from the suggestion and needs some text", async ({
@@ -932,7 +963,7 @@ test.describe("suggesting a fix", () => {
     await field.fill("The Tarnhollow Landing app");
     await found.getByRole("button", { name: "Save edit" }).click();
 
-    await expect(found).toContainText("Edited fix saved");
+    await expect(found).toContainText("Fix waiting for a reviewer");
     expect(decisions[0]).toMatchObject({
       action: "edit_fix",
       fix_text: "The Tarnhollow Landing app",
@@ -1001,6 +1032,85 @@ test.describe("suggesting a fix", () => {
     );
   });
 
+  test("is labelled as an AI suggestion", async ({ page }) => {
+    await stubReview(page);
+    await stubFixes(page, [{ json: fixFor(1) }]);
+    await page.goto("/content/c1/review");
+
+    await suggestFix(page).click();
+
+    await expect(card(page, "retired name")).toContainText("AI suggestion");
+  });
+
+  test("reopening doesn't spend an attempt", async ({ page }) => {
+    await stubReview(page);
+    const asked = await stubFixes(page, [{ json: fixFor(1) }]);
+    await page.goto("/content/c1/review");
+
+    await suggestFix(page).click();
+    await card(page, "retired name")
+      .getByRole("button", { name: "Close" })
+      .click();
+    await suggestFix(page).click();
+
+    await expect(card(page, "retired name")).toContainText("attempt 1 of 2");
+    expect(asked).toEqual([false, false]);
+  });
+
+  test("trying another spends an attempt", async ({ page }) => {
+    await stubReview(page);
+    const asked = await stubFixes(page, [
+      { json: fixFor(1) },
+      { json: fixFor(2) },
+    ]);
+    await page.goto("/content/c1/review");
+
+    await suggestFix(page).click();
+    await card(page, "retired name")
+      .getByRole("button", { name: "Try another" })
+      .click();
+
+    await expect(card(page, "retired name")).toContainText("attempt 2 of 2");
+    expect(asked).toEqual([false, true]);
+  });
+
+  test("a failed second attempt keeps the first fix", async ({ page }) => {
+    await stubReview(page);
+    await stubFixes(page, [
+      { json: fixFor(1) },
+      { status: 422, json: { detail: "No safe fix" } },
+    ]);
+    await page.goto("/content/c1/review");
+
+    await suggestFix(page).click();
+    const found = card(page, "retired name");
+    await found.getByRole("button", { name: "Try another" }).click();
+
+    await expect(found.getByRole("alert")).toHaveText(
+      "No safe fix found; marked for review",
+    );
+    await expect(found.locator("ins")).toContainText("Landing");
+    await expect(found.getByRole("button", { name: "Accept" })).toBeVisible();
+    await expect(found.getByRole("button", { name: "Try another" })).toHaveCount(
+      0,
+    );
+  });
+
+  test("a failed fix can be closed", async ({ page }) => {
+    await stubReview(page);
+    await stubFixes(page, [
+      { status: 422, json: { detail: "No safe fix" } },
+    ]);
+    await page.goto("/content/c1/review");
+
+    await suggestFix(page).click();
+    await card(page, "retired name")
+      .getByRole("button", { name: "Close" })
+      .click();
+
+    await expect(suggestFix(page)).toBeVisible();
+  });
+
   test("a server problem can be tried again", async ({ page }) => {
     await stubReview(page);
     await stubFixes(page, [
@@ -1062,6 +1172,29 @@ test.describe("replaying a verdict", () => {
     await expect(card(page, "retired name").getByRole("status")).toHaveText(
       "Different result: UNSURE",
     );
+  });
+
+  test("a failed re-run doesn't leave the old result behind", async ({
+    page,
+  }) => {
+    await stubReview(page);
+    let calls = 0;
+    await page.route("**/stub-api/engine/verdicts/*/replay", (route) => {
+      calls += 1;
+      return calls === 1
+        ? route.fulfill({ json: REPLAY })
+        : route.fulfill({ status: 500, json: { detail: "That failed." } });
+    });
+    await page.goto("/content/c1/review");
+
+    await replay(page).click();
+    const found = card(page, "retired name");
+    await expect(found.getByRole("status")).toHaveText("Identical result ✓");
+
+    await replay(page).click();
+
+    await expect(found.getByRole("alert")).toHaveText("That failed.");
+    await expect(found).not.toContainText("Identical result");
   });
 
   test("reports a failure", async ({ page }) => {
@@ -1258,6 +1391,39 @@ test.describe("deciding on a finding", () => {
     });
   });
 
+  test("a reviewer signs off an edited fix and sees its wording", async ({
+    page,
+  }) => {
+    await stubReview(page);
+    const board = boardFor();
+    const { decisions } = await stubBoard(page, {
+      ...board,
+      findings: board.findings.map((item) =>
+        item.id === BASE.id
+          ? {
+              ...item,
+              status: "fix_edited",
+              fix_text: "The Landing app",
+              allowed: ["resolve", "reject_override"],
+            }
+          : { ...item, allowed: [] },
+      ),
+    });
+    await page.goto("/content/c1/review");
+
+    const found = card(page, "retired name");
+    await expect(found).toContainText("Fix waiting for a reviewer");
+    await expect(found).toContainText("Wording: The Landing app");
+    await expect(found.getByRole("button", { name: "Reject fix" })).toBeVisible();
+
+    await found.getByRole("button", { name: "Sign off" }).click();
+    await found.getByLabel("Why is this fix fine?").fill("Reads well");
+    await found.getByRole("button", { name: "Sign off" }).click();
+
+    await expect(found).toContainText("Resolved");
+    expect(decisions[0]).toMatchObject({ action: "resolve", reason: "Reads well" });
+  });
+
   test("a settled finding loses its highlight", async ({ page }) => {
     await stubReview(page);
     await stubFixes(page, [{ json: fixFor(1) }]);
@@ -1369,6 +1535,25 @@ test.describe("moving content through the workflow", () => {
     await expect(bar(page)).toContainText("Status: Resolving");
     expect(moves).toHaveLength(1);
     expect(moves[0].to).toBe("resolving");
+  });
+
+  test("stays in AI review while the run isn't finished", async ({ page }) => {
+    await stubReview(page);
+    const { moves } = await stubBoard(page, {
+      ...boardFor(),
+      state: "ai_review",
+      moves: [
+        {
+          to: "resolving",
+          needs_reason: false,
+          blocked_by: "The review is still running",
+        },
+      ],
+    });
+    await page.goto("/content/c1/review");
+
+    await expect(bar(page)).toContainText("Status: AI review");
+    expect(moves).toEqual([]);
   });
 
   test("offers no moves on finished content", async ({ page }) => {

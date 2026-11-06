@@ -16,6 +16,7 @@ import {
 import {
   CHECK_LABELS,
   confidenceLabel,
+  isDocumentLevel,
   modelLabel,
   SEVERITY_LABELS,
   sourceLabel,
@@ -115,6 +116,7 @@ function Replay({ findingId }: { findingId: string }) {
   function replay() {
     setLoading(true);
     setError(null);
+    setResult(null);
     replayVerdict(findingId)
       .then(setResult, (caught: ApiError) => setError(caught.message))
       .finally(() => setLoading(false));
@@ -164,6 +166,7 @@ function Replay({ findingId }: { findingId: string }) {
 }
 
 export function FindingCard({
+  contentId,
   finding,
   selected,
   clauseRefs,
@@ -171,6 +174,7 @@ export function FindingCard({
   onSelect,
   onDecide,
 }: {
+  contentId: string;
   finding: Finding;
   selected: boolean;
   clauseRefs: ReadonlyMap<string, string>;
@@ -221,7 +225,7 @@ export function FindingCard({
         {finding.explanation}
       </button>
 
-      {finding.spans.length === 0 && (
+      {isDocumentLevel(finding) && (
         <p className="text-muted-foreground">Applies to the whole document.</p>
       )}
 
@@ -238,10 +242,21 @@ export function FindingCard({
 
       <div className="flex flex-wrap items-center gap-2">
         {outcome && <p className="w-full font-medium">{outcome}</p>}
-        {allowed.includes("accept_fix") && finding.fix_available && (
-          <FixPanel finding={finding} onDecide={decideThis} />
+        {standing?.fix_text && (
+          <p className="w-full">Wording: {standing.fix_text}</p>
         )}
-        <DecisionActions allowed={allowed} onDecide={decideThis} />
+        {allowed.includes("accept_fix") && finding.fix_available && (
+          <FixPanel
+            contentId={contentId}
+            finding={finding}
+            onDecide={decideThis}
+          />
+        )}
+        <DecisionActions
+          allowed={allowed}
+          status={standing?.status ?? "open"}
+          onDecide={decideThis}
+        />
         <Replay findingId={finding.id} />
       </div>
 
