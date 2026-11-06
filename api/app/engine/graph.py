@@ -89,6 +89,15 @@ def flagged_chunk_ids(chunks: list[ParsedChunk], ctx: CheckContext) -> set[str]:
     }
 
 
+def known_rule_ids(ctx: CheckContext) -> set[str]:
+    return {
+        *(rule.id for rule in ctx.rules),
+        SEC_CONFIDENTIAL,
+        SEC_HIDDEN_CONTENT,
+        SEC_INJECTION,
+    }
+
+
 def build_review_graph(
     classify: ClassifyFn,
     *,
@@ -120,12 +129,7 @@ def build_review_graph(
         ctx = state["ctx"]
         findings, gaps = critic.gate(
             state["candidates"],
-            known_rule_ids={
-                *(rule.id for rule in ctx.rules),
-                SEC_CONFIDENTIAL,
-                SEC_HIDDEN_CONTENT,
-                SEC_INJECTION,
-            },
+            known_rule_ids=known_rule_ids(ctx),
             known_fact_ids={fact.id for fact in ctx.facts},
         )
         if gaps:
@@ -154,9 +158,44 @@ def run_review(
     *,
     gap_sink: GapSink,
     model: str = PINNED_MODEL,
+    on_finding: Callable[[Finding], None] | None = None,
 ) -> tuple[list[Finding], list[Gap]]:
+    """Runs the graph. `on_finding` gets each finding once, as soon as its track
+    finishes, so code findings don't wait for the model. Tier 0 always goes first:
+    a fast model's findings wait until the code checks have reported. Every one
+    has passed the critic. The returned list is the final word."""
     graph = build_review_graph(classify, gap_sink=gap_sink, model=model)
-    state = graph.invoke(
-        {"chunks": chunks, "ctx": ctx, "fmt": fmt, "candidates": []}
-    )
-    return state["findings"], state["gaps"]
+    known_facts = {fact.id for fact in ctx.facts}
+    collected: list[Candidate] = []
+    published: set[str] = set()
+    findings: list[Finding] = []
+    gaps: list[Gap] = []
+    tier0_reported = False
+
+    def publish(ready: list[Finding]) -> None:
+        for finding in ready:
+            if finding.id not in published:
+                published.add(finding.id)
+                if on_finding:
+                    on_finding(finding)
+
+    for update in graph.stream(
+        {"chunks": chunks, "ctx": ctx, "fmt": fmt, "candidates": []},
+        stream_mode="updates",
+    ):
+        for node, change in update.items():
+            if node == "critic":
+                findings, gaps = change["findings"], change["gaps"]
+                publish(findings)
+                continue
+            collected.extend((change or {}).get("candidates", []))
+            tier0_reported = tier0_reported or node == "tier0"
+            if not tier0_reported:
+                continue
+            ready, _ = critic.gate(
+                collected,
+                known_rule_ids=known_rule_ids(ctx),
+                known_fact_ids=known_facts,
+            )
+            publish(ready)
+    return findings, gaps
