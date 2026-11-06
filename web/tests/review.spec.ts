@@ -881,6 +881,41 @@ test.describe("finding cards", () => {
     await expect(progress).not.toContainText("checking");
   });
 
+  test("a contrast finding previews the pair and a colour that passes", async ({
+    page,
+  }) => {
+    await stubReview(page);
+    await stubBoard(page);
+    await stubReview(page, {
+      findings: [
+        {
+          ...BASE,
+          check: "accessibility",
+          rule_id: "WCAG-1.4.3",
+          rule_version: null,
+          explanation: "This text has low contrast.",
+          trace: {
+            ...BASE.trace,
+            steps: [
+              {
+                tool: "contrast_preview",
+                input_summary: "#AAAAAA on #FFFFFF",
+                output_summary: "2.3:1, needs 4.5:1, try #12343B",
+              },
+            ],
+          },
+        },
+      ],
+    });
+    await page.goto("/content/c1/review");
+
+    const found = card(page, "low contrast");
+    await expect(found).toContainText("Text #AAAAAA");
+    await expect(found).toContainText("Background #FFFFFF");
+    await expect(found).toContainText("2.3:1, needs 4.5:1");
+    await expect(found).toContainText("Try #12343B");
+  });
+
   test("progress is shown for every track", async ({ page }) => {
     await stubReview(page);
     await page.goto("/content/c1/review");
