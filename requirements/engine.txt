@@ -8,3 +8,7 @@ beautifulsoup4==4.12.3    # HTML
 lxml==5.3.0               # docx/bs4 backend
 pytesseract==0.3.13       # image OCR (needs the tesseract-ocr system binary)
 pillow==10.4.0            # image loading for OCR
+
+# Agents (block 4). Pulls in langsmith, whose tracing stays forced off in
+# app/engine/graph.py so no content can leave around the gateway.
+langgraph==1.2.20
