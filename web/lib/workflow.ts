@@ -30,6 +30,8 @@ export type DecisionInput = {
   action: DecisionAction;
   reason?: string;
   fix_text?: string;
+  // For accept_fix: which offer was on screen, so nothing unseen gets saved.
+  attempt?: number;
 };
 
 export function getBoard(contentId: string): Promise<Board> {

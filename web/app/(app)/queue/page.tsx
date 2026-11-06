@@ -1,12 +1,8 @@
-import {
-  PlaceholderPage,
-  placeholderMetadata,
-} from "@/components/placeholder-page";
+import { QueueScreen } from "@/components/queue-screen";
+import { placeholderMetadata } from "@/components/placeholder-page";
 
-const HREF = "/queue";
-
-export const metadata = placeholderMetadata(HREF);
+export const metadata = placeholderMetadata("/queue");
 
 export default function Page() {
-  return <PlaceholderPage href={HREF} />;
+  return <QueueScreen />;
 }
