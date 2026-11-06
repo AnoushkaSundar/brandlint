@@ -8,7 +8,7 @@ from app.engine.checks.context import (
     SEC_INJECTION,
     CheckContext,
 )
-from app.engine.checks.facts import check_fact_expiry
+from app.engine.checks.facts import check_confidential_terms, check_fact_expiry
 from app.engine.checks.hidden import check_hidden_content
 from app.engine.checks.injection import detect_instructions
 from app.engine.checks.required import check_required_elements
@@ -19,6 +19,7 @@ __all__ = [
     "SEC_HIDDEN_CONTENT",
     "SEC_INJECTION",
     "CheckContext",
+    "check_confidential_terms",
     "check_fact_expiry",
     "check_hidden_content",
     "check_required_elements",
