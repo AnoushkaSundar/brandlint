@@ -208,3 +208,24 @@ class Chunk(BaseModel):
     content_hash: str
     data_class: DataClass
     style: dict | None = None
+
+
+class ContentSource(BaseModel):
+    """What the engine reviews, handed over in-process when a review starts.
+
+    Never sent over HTTP. It carries bytes rather than a path or file reference
+    so that no client can point the engine at a file on the server.
+    """
+
+    data_class: DataClass
+    text: str = ""
+    file_name: str | None = None
+    file_bytes: bytes | None = None
+
+    @model_validator(mode="after")
+    def _require_content(self) -> ContentSource:
+        if not self.text and not self.file_bytes:
+            raise ValueError("ContentSource needs text or file_bytes")
+        if self.file_bytes and not self.file_name:
+            raise ValueError("file_bytes needs file_name, which gives the format")
+        return self
