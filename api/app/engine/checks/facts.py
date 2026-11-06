@@ -2,18 +2,39 @@
 
 - `check_fact_expiry`: content stating the value of a fact whose `valid_until`
   (now a date) has passed; cites the fact.
-- `check_confidential_terms`: a confidential fact's value (a codename) appearing
-  in content — always critical; cites the fact. This is the deterministic
-  backstop; the gateway's masking deny-list (block 4) is the other layer.
+- `check_confidential_terms`: a protected fact's value (a codename) appearing in
+  content — always critical. This is the deterministic backstop; the gateway's
+  masking deny-list (block 4) is the other layer.
+
+Findings are shown to anyone who can see the review, including outside agencies,
+so a protected fact's statement must never appear in one. These findings cite a
+rule instead, and an expired protected fact is cited without its statement.
 """
 
 from __future__ import annotations
 
 import re
 
-from app.contracts import CheckType, DataClass, Finding, Severity
-from app.engine.checks.context import CheckContext, make_finding
+from app.contracts import CheckType, DataClass, Finding, Rule, RuleStatus, Severity
+from app.engine.checks.context import (
+    _SEC_TEXT,
+    SEC_CONFIDENTIAL,
+    CheckContext,
+    make_finding,
+)
 from app.engine.chunking import ParsedChunk
+
+_PROTECTED = {DataClass.confidential, DataClass.restricted}
+_EXPIRED_PROTECTED_CITATION = "An approved fact that has expired (details restricted)."
+
+
+def _confidentiality_rule(ctx: CheckContext) -> Rule | None:
+    """The brand rule against naming codenames. Rules carry no topic field, so
+    match on the wording; `check_confidential_terms` falls back to a built-in."""
+    for rule in ctx.rules:
+        if rule.status == RuleStatus.approved and "codename" in rule.text.lower():
+            return rule
+    return None
 
 
 def check_fact_expiry(chunks: list[ParsedChunk], ctx: CheckContext) -> list[Finding]:
@@ -34,7 +55,11 @@ def check_fact_expiry(chunks: list[ParsedChunk], ctx: CheckContext) -> list[Find
                     ctx,
                     check=CheckType.claim,
                     severity=Severity.high,
-                    cited_text=fact.statement,
+                    cited_text=(
+                        _EXPIRED_PROTECTED_CITATION
+                        if fact.data_class in _PROTECTED
+                        else fact.statement
+                    ),
                     explanation=(
                         f"States '{value}', from a fact that expired on "
                         f"{fact.valid_until.isoformat()}."
@@ -57,9 +82,10 @@ def check_fact_expiry(chunks: list[ParsedChunk], ctx: CheckContext) -> list[Find
 def check_confidential_terms(
     chunks: list[ParsedChunk], ctx: CheckContext
 ) -> list[Finding]:
+    rule = _confidentiality_rule(ctx)
     findings: list[Finding] = []
     for fact in ctx.facts:
-        if fact.data_class != DataClass.confidential:
+        if fact.data_class not in _PROTECTED:
             continue
         value = (fact.value or "").strip()
         if not value:
@@ -72,11 +98,8 @@ def check_confidential_terms(
                         ctx,
                         check=CheckType.messaging,
                         severity=Severity.critical,
-                        cited_text=fact.statement,
-                        explanation=(
-                            f"'{value}' is a confidential codename and must not "
-                            f"appear in published content."
-                        ),
+                        cited_text=rule.text if rule else _SEC_TEXT[SEC_CONFIDENTIAL],
+                        explanation=f"'{match.group(0)}' must not appear in content.",
                         anchor=f"{chunk.id}:{match.start()}:conf:{fact.id}",
                         spans=[
                             {
@@ -85,8 +108,9 @@ def check_confidential_terms(
                                 "end": match.end(),
                             }
                         ],
-                        fact_ids=[fact.id],
-                        sources=[fact.id],
+                        rule=rule,
+                        rule_id=None if rule else SEC_CONFIDENTIAL,
+                        sources=None if rule else [SEC_CONFIDENTIAL],
                     )
                 )
     return findings
