@@ -389,3 +389,27 @@ def test_the_gateway_client_gives_the_real_gateway_its_session(monkeypatch):
     )
 
     assert received == {"session": session, "review_id": "review-1"}
+
+
+def test_chunks_give_the_text_findings_point_at(client):
+    chunks = client.get("/engine/reviews/rev-demo-agency-blog/chunks").json()
+
+    by_id = {chunk["id"]: chunk for chunk in chunks}
+    assert [chunk["ordinal"] for chunk in chunks] == list(range(len(chunks)))
+    assert by_id["blog-h1"]["kind"] == "heading"
+    assert by_id["blog-h1"]["content_version_id"] == "cv-demo-agency-blog-1"
+    assert len(by_id["blog-h1"]["content_hash"]) == 64
+    assert by_id["blog-p2"]["kind"] == "paragraph"
+    for finding in data.findings_for_piece("agency-blog"):
+        for span in finding["spans"]:
+            assert span["end"] <= len(by_id[span["chunk_id"]]["text"])
+
+
+def test_a_banner_has_an_image_chunk(client):
+    chunks = client.get("/engine/reviews/rev-demo-banner/chunks").json()
+
+    assert chunks[0]["kind"] == "image"
+
+
+def test_chunks_for_an_unknown_review_are_not_found(client):
+    assert client.get("/engine/reviews/nope/chunks").status_code == 404
