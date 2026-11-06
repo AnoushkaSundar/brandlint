@@ -13,8 +13,8 @@ import {
   getContent,
   versionFilePath,
 } from "@/lib/content";
-import type { Finding } from "@/lib/contracts";
-import { type Chunk, getChunks, streamFindings } from "@/lib/engineClient";
+import type { Chunk, Finding } from "@/lib/contracts";
+import { getChunks, streamFindings } from "@/lib/engineClient";
 import { trackProgress } from "@/lib/findingLabels";
 import { sortFindings } from "@/lib/highlights";
 

@@ -4,8 +4,7 @@ import { join } from "node:path";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page, test } from "@playwright/test";
 
-import { type Finding } from "../lib/contracts";
-import { type Chunk } from "../lib/engineClient";
+import { type Chunk, type Finding } from "../lib/contracts";
 import { trackProgress } from "../lib/findingLabels";
 import {
   type Highlight,
