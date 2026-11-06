@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { type FormEvent, useEffect, useState } from "react";
 
 import { useAuth } from "@/components/auth-provider";
+import { ContentHistory } from "@/components/content-history";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -247,6 +248,8 @@ export function ContentDetail({ id }: { id: string }) {
           ))}
         </ol>
       </section>
+
+      <ContentHistory contentId={id} versions={content.versions} />
     </div>
   );
 }
