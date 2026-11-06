@@ -57,6 +57,7 @@ Proposal  { id, rule_id, kind: amendment|anchor|term|severity, current, suggeste
             status: pending|approved|rejected }
 Chunk     { id, content_version_id, ordinal, kind: heading|paragraph|image, text,
             content_hash, data_class, style? }   # v2: served to the review screen
+ContentSource { data_class, text, file_name?, file_bytes? }  # v3: in-process only, never on the wire
 ```
 
 ### contracts/v2 changes
@@ -66,6 +67,12 @@ Chunk     { id, content_version_id, ordinal, kind: heading|paragraph|image, text
 - `Fact.valid_until` is a **date** (was datetime), matching the facts table.
 - New `Chunk` model + engine endpoint (below) for the review screen.
 
+### contracts/v3 changes
+
+- New `ContentSource`: what the engine reviews. The product already holds this when it starts a review, so it hands the content over, and the engine never reads `content` or `content_versions`.
+- `app.clients.engine.start_review(content_version_id, channel, rulebook_version, source)` is how a real review starts. It is a Python call inside the API process.
+- `file_bytes` is set for uploads and is the file's raw bytes. `file_name` gives the format. For pasted text both are empty and the engine parses `text`.
+- `ContentSource` is never sent over HTTP. Paths and file references stay out of it, so no client can point the engine at a file on the server.
 
 ## Service interfaces
 
@@ -73,7 +80,7 @@ Alapan provides these. Anoushka mocks them under `api/mocks/` until they're buil
 
 | Call | Purpose |
 |---|---|
-| `POST /engine/reviews {content_version_id, channel, rulebook_version}` → `{review_id}` | start an AI review |
+| `POST /engine/reviews {content_version_id, channel, rulebook_version}` → `{review_id}` | start an AI review; mock only from v3, the real engine starts through `app.clients.engine.start_review` |
 | `GET /engine/reviews/{id}/findings` (SSE) | stream findings; tier 0 first |
 | `POST /engine/reviews/{id}/recheck {changed_chunk_ids}` | incremental re-review |
 | `GET /engine/reviews/{id}/chunks` → `[Chunk]` | parsed chunks for the review screen (v2) |
