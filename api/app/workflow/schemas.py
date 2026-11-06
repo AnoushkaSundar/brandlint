@@ -19,6 +19,8 @@ class DecisionIn(BaseModel):
     reason: str | None = None
     # The creator's wording, for edit_fix. accept_fix uses the engine's offer.
     fix_text: str | None = None
+    # For accept_fix: which offer was on screen, so nothing unseen gets saved.
+    attempt: int | None = None
 
 
 class FixRequest(BaseModel):
@@ -58,10 +60,14 @@ class QueueItem(BaseModel):
     channel: str
     state: ContentState
     finding_id: str
-    kind: Literal["unsure", "override", "fix"]
+    kind: Literal["unsure", "override", "fix", "needs_override"]
     severity: Severity
     check: CheckType
     explanation: str
+    # No source, no flag: a reviewer decides with the citation in front of them.
+    rule_id: str | None
+    fact_ids: list[str]
+    cited_text: str
     # The creator's reason, for an override.
     reason: str | None
     # The wording to sign off, for a fix.
@@ -72,6 +78,8 @@ class Queue(BaseModel):
     items: list[QueueItem]
     # Pieces submitted and waiting for a reviewer to pass or send back.
     ready: list[ContentOut]
+    # Titles of pieces whose findings couldn't be read just now.
+    unavailable: list[str]
 
 
 class CommentIn(BaseModel):

@@ -105,6 +105,12 @@ def post_review(body: ReviewRequest) -> dict:
     return start_review(body.channel)
 
 
+def _chunk_style(chunk_id: str) -> dict | None:
+    if chunk_id.endswith("-hidden"):
+        return {"hidden": True}
+    return {"from_ocr": True} if "-ocr-" in chunk_id else None
+
+
 def _chunk_kind(chunk_id: str) -> str:
     if chunk_id.endswith("-h1"):
         return "heading"
@@ -126,7 +132,7 @@ def list_chunks(review_id: str) -> list[dict]:
             "text": text,
             "content_hash": sha256(text.encode()).hexdigest(),
             "data_class": "public",
-            "style": None,
+            "style": _chunk_style(chunk_id),
         }
         for ordinal, (chunk_id, text) in enumerate(data.chunks_for_piece(piece).items())
     ]

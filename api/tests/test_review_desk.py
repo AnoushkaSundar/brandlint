@@ -5,6 +5,7 @@ import pytest
 from app.auth.models import User
 from app.auth.router import router as auth_router
 from app.auth.security import SESSION_COOKIE, create_token, hash_password
+from app.clients.engine import list_findings
 from app.content.router import router as content_router
 from app.contracts import Role
 from app.db import Base, get_session
@@ -18,6 +19,7 @@ from sqlalchemy.pool import StaticPool
 LOW = "fnd-agency-blog-03"
 MEDIUM = "fnd-agency-blog-02"
 HIGH = "fnd-agency-blog-01"
+CRITICAL = "fnd-agency-blog-04"
 UNSURE = "fnd-agency-blog-07"
 
 
@@ -131,13 +133,78 @@ def test_the_queue_shows_unsure_findings(client_for):
     creator = client_for()
     content_id = resolving(creator)
 
-    items = queue(client_for(Role.reviewer))["items"]
+    items = of_kind(client_for(Role.reviewer), "unsure")
 
     assert len(items) == 1
-    assert items[0]["kind"] == "unsure"
     assert items[0]["finding_id"] == UNSURE
     assert items[0]["content_id"] == content_id
     assert items[0]["title"] == "First week guide"
+
+
+def of_kind(client, kind):
+    return [item for item in queue(client)["items"] if item["kind"] == kind]
+
+
+def test_a_finding_only_a_reviewer_can_clear_reaches_the_queue(client_for):
+    creator = client_for()
+    resolving(creator)
+
+    items = of_kind(client_for(Role.reviewer), "needs_override")
+
+    assert {item["severity"] for item in items} == {"critical", "high"}
+    assert CRITICAL in {item["finding_id"] for item in items}
+
+
+def test_clearing_it_takes_it_out_of_the_queue(client_for):
+    creator = client_for()
+    reviewer = client_for(Role.reviewer)
+    content_id = resolving(creator)
+
+    decide(reviewer, content_id, CRITICAL, "override", "Checked")
+
+    assert CRITICAL not in {i["finding_id"] for i in of_kind(reviewer, "needs_override")}
+
+
+def test_a_low_finding_stays_the_creators_to_fix(client_for):
+    creator = client_for()
+    resolving(creator)
+
+    items = queue(client_for(Role.reviewer))["items"]
+
+    assert LOW not in {item["finding_id"] for item in items}
+
+
+def test_every_queue_item_carries_its_source(client_for):
+    creator = client_for()
+    resolving(creator)
+
+    items = queue(client_for(Role.reviewer))["items"]
+
+    assert items
+    for item in items:
+        assert item["cited_text"]
+        assert item["rule_id"] or item["fact_ids"]
+
+
+def test_one_failing_piece_does_not_empty_the_queue(client_for, monkeypatch):
+    creator = client_for()
+    resolving(creator, "Good piece")
+    resolving(creator, "Broken piece")
+    real = list_findings
+    calls = []
+
+    def flaky(review_id):
+        calls.append(review_id)
+        if len(calls) == 1:
+            raise RuntimeError("engine fell over")
+        return real(review_id)
+
+    monkeypatch.setattr("app.clients.engine.list_findings", flaky)
+
+    result = queue(client_for(Role.reviewer))
+
+    assert len(result["unavailable"]) == 1
+    assert result["items"]
 
 
 def test_a_pending_override_shows_the_creators_reason(client_for):
@@ -160,7 +227,9 @@ def test_the_queue_runs_from_most_to_least_serious(client_for):
 
     severities = [item["severity"] for item in queue(client_for(Role.reviewer))["items"]]
 
-    assert severities == ["medium", "medium", "low"]
+    ranks = ["critical", "high", "medium", "low"]
+    assert severities == sorted(severities, key=ranks.index)
+    assert severities[0] == "critical"
 
 
 def test_an_edited_fix_is_queued_with_its_wording(client_for):
@@ -184,7 +253,8 @@ def test_settled_items_leave_the_queue(client_for):
     decide(reviewer, content_id, LOW, "confirm_override")
     decide(reviewer, content_id, UNSURE, "resolve", "Fine")
 
-    assert queue(reviewer)["items"] == []
+    settled = {item["finding_id"] for item in queue(reviewer)["items"]}
+    assert not settled & {LOW, UNSURE}
 
 
 def test_pieces_ready_for_a_reviewer_are_listed(client_for, no_findings):
@@ -257,6 +327,52 @@ def test_text_that_only_looks_like_a_mention_names_nobody(client_for, body):
     comment(creator, content_id, body)
 
     assert comments(creator, content_id)[0]["mentions"] == []
+
+
+def test_a_mention_only_reaches_people_who_can_see_the_piece(client_for):
+    creator = client_for()
+    client_for(Role.creator, "priya", "Priya Nair")
+    content_id = resolving(creator)
+
+    comment(creator, content_id, "Could @priya look?")
+
+    assert comments(creator, content_id)[0]["mentions"] == []
+
+
+def test_a_comment_cannot_point_at_an_unknown_finding(client_for):
+    creator = client_for()
+    content_id = resolving(creator)
+
+    assert comment(creator, content_id, finding_id="nope").status_code == 404
+
+
+@pytest.mark.parametrize(
+    "span",
+    [
+        {"chunk_id": "nope", "start": 0, "end": 5},
+        {"chunk_id": "blog-p1", "start": 5, "end": 5},
+        {"chunk_id": "blog-p1", "start": 0, "end": 99999},
+    ],
+)
+def test_a_comment_cannot_point_at_text_that_is_not_there(client_for, span):
+    creator = client_for()
+    content_id = resolving(creator)
+
+    assert comment(creator, content_id, span=span).status_code == 422
+
+
+def test_a_reply_from_a_newer_version_joins_the_older_thread(client_for):
+    creator = client_for()
+    content_id = resolving(creator)
+    comment(creator, content_id, "On version one")
+    parent = comments(creator, content_id)[0]
+    creator.post(f"/content/{content_id}/versions", data={"text": "Newer"})
+
+    response = comment(creator, content_id, "Replying later", parent_id=parent["id"])
+
+    assert response.status_code == 201
+    reply = comments(creator, content_id)[1]
+    assert reply["content_version_id"] == parent["content_version_id"]
 
 
 @pytest.mark.parametrize("body", ["", "   "])

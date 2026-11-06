@@ -174,6 +174,7 @@ def decide(
         action=body.action,
         reason=body.reason,
         fix_text=body.fix_text,
+        attempt=body.attempt,
     )
     session.commit()
     return _board(session, content, user)
@@ -181,15 +182,10 @@ def decide(
 
 def _fixed_text(review: Review, facts: ReviewFacts) -> str | None:
     """The text with every approved fix in place, or None when there are no fixes."""
-    if not any(item.fix_text for item in facts.progress.values()):
+    if all(item.fix_text is None for item in facts.progress.values()):
         return None
     chunks = engine_client.list_chunks(review.engine_review_id)
-    try:
-        return fixes.text_with_fixes(chunks, facts.findings, facts.progress)
-    except fixes.FixesOverlap:
-        raise HTTPException(
-            status.HTTP_409_CONFLICT, "Two saved fixes overlap. Send this back."
-        ) from None
+    return fixes.text_with_fixes(chunks, facts.findings, facts.progress)
 
 
 @router.post("/content/{content_id}/transitions", response_model=Board)
@@ -200,9 +196,6 @@ def transition(
     review = latest_review(session, content.id)
     facts = _facts(session, content, review)
 
-    # Sign-off comes first, so a rejected edit never reaches a version.
-    approving = body.to is ContentState.manager_approval
-    fixed_text = _fixed_text(review, facts) if review and approving else None
     make_move(
         session,
         content=content,
@@ -212,8 +205,17 @@ def transition(
         reason=body.reason,
         rulebook_version=review.rulebook_version if review else None,
     )
-    if fixed_text is not None:
-        fixes.save_fixed_version(session, content, fixed_text, user)
+    # Sign-off comes first, so a rejected edit never reaches a version.
+    if review and body.to is ContentState.manager_approval:
+        try:
+            fixed_text = _fixed_text(review, facts)
+        except fixes.FixCannotApply:
+            session.rollback()
+            raise HTTPException(
+                status.HTTP_409_CONFLICT, "A saved fix can't be applied. Send this back."
+            ) from None
+        if fixed_text is not None:
+            fixes.save_fixed_version(session, content, fixed_text, user)
     session.commit()
     return _board(session, content, user)
 
@@ -240,9 +242,11 @@ def get_queue(session: SessionDep) -> Queue:
         .where(Content.state == ContentState.reviewer_check.value)
         .order_by(Content.created_at)
     )
+    items, unavailable = reviewer_queue(session)
     return Queue(
-        items=reviewer_queue(session),
+        items=items,
         ready=[ContentOut.model_validate(content) for content in ready],
+        unavailable=unavailable,
     )
 
 

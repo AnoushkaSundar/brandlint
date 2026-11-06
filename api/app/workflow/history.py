@@ -124,7 +124,8 @@ def audit_page(
         select(AuditLog, User.name)
         .join(User, AuditLog.actor_id == User.id, isouter=True)
         .where(*filters)
-        .order_by(AuditLog.created_at.desc())
+        # The id breaks ties, so a row can't appear on two pages or on neither.
+        .order_by(AuditLog.created_at.desc(), AuditLog.id)
         .limit(limit)
         .offset(offset)
     ).all()
