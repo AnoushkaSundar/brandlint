@@ -88,7 +88,8 @@ def _replay_claim(
         raise NotReplayable("The chunk this verdict judged has changed.")
     unit = claims.ClaimUnit(manifest["claim"], manifest["spans"])
     candidate = claims.verify(
-        unit, ctx, classify, data_class=first.data_class, flagged=(),
+        unit, ctx, classify, data_class=first.data_class,
+        flagged=manifest.get("flagged", ()),
         model=manifest["model"],
     )
     if candidate is None:

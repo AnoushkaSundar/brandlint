@@ -242,3 +242,64 @@ def test_fenced_replies_are_accepted():
         return {"content": fenced}
 
     assert verify(unit("Customers cut onboarding time by 38%."), model) is None
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Customers cut onboarding time by 38 percent.",
+        "Customers cut onboarding time by 38 per cent.",
+        "Customers cut onboarding time by 38percent.",
+    ],
+)
+def test_a_percentage_in_words_matches_the_figure(text):
+    assert verify(unit(text), Model()) is None
+
+
+def test_a_wrong_percentage_in_words_is_still_wrong():
+    found = verify(unit("Customers cut onboarding time by 80 percent."), Model())
+    assert found.verdict == "VIOLATION"
+
+
+def test_the_backstop_sees_percentages_in_words():
+    chunks = [chunk(0, "We lifted output by 55 percent last year.")]
+    found, units = claims.review(chunks, context(facts=()), Model([]), model="m")
+    assert len(units) == 1
+    assert found[0].verdict == "VIOLATION"
+
+
+@pytest.mark.parametrize(
+    "text", ["We are one of the best in the market.", "It gives teams one place to work."]
+)
+def test_one_is_not_a_statistic(text):
+    assert verify(unit(text), Model(), facts=()).verdict == "UNSURE"
+
+
+def test_a_flagged_claim_records_it_for_replay():
+    found = verify(
+        unit("Customers cut onboarding time by 38%."), Model(), flagged={"cv:0"}
+    )
+    assert found.manifest["flagged"] == ["cv:0"]
+
+
+class StaleCache:
+    def __init__(self):
+        self.puts = 0
+
+    def get(self, key, facts):
+        return {"old": "shape"}
+
+    def put(self, key, **kwargs):
+        self.puts += 1
+
+
+def test_a_stale_cache_row_is_a_miss_for_extraction_and_matching():
+    cache = StaleCache()
+    chunks = [chunk(0, "Customers cut onboarding time by 38%.")]
+    model = Model(
+        [{"claim": chunks[0].text, "quotes": [{"block": 0, "text": chunks[0].text}]}]
+    )
+    found, units = claims.review(chunks, context(), model, model="m", cache=cache)
+    assert found == []
+    assert len(units) == 1
+    assert cache.puts == 2

@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, time
 from typing import Any, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from app.contracts import (
     CheckType,
@@ -50,11 +50,13 @@ _FENCE = re.compile(r"^\s*```(?:json)?\s*|\s*```\s*$")
 _NUMBER = re.compile(r"\d[\d,]*(?:\.\d+)?%?")
 _WORD = re.compile(r"[a-z]{4,}")
 _SENTENCE = re.compile(r"[^.!?]+[.!?]*")
+# "One" is left out: "one of the best" and "one place" aren't statistics.
 _NUMBER_WORDS = {
-    "one": "1", "two": "2", "three": "3", "four": "4", "five": "5", "six": "6",
-    "seven": "7", "eight": "8", "nine": "9", "ten": "10", "twelve": "12",
+    "two": "2", "three": "3", "four": "4", "five": "5", "six": "6", "seven": "7",
+    "eight": "8", "nine": "9", "ten": "10", "twelve": "12",
 }
 _NUMBER_WORD = re.compile(rf"\b({'|'.join(_NUMBER_WORDS)})\b", re.IGNORECASE)
+_PERCENT_WORD = re.compile(r"(\d)\s*(?:per\s?cent|pct)\b", re.IGNORECASE)
 _STOP_WORDS = {
     "that", "this", "with", "from", "have", "they", "them", "their", "will", "your",
     "about", "more", "than", "over", "into", "some", "most", "many", "each",
@@ -113,15 +115,30 @@ class ClaimUnit:
 ClaimSink = Callable[[list[ClaimUnit]], None]
 
 
+def _stored(payload: dict | None, shape: type[BaseModel]) -> Any:
+    """A cached answer, if it still fits. A stale row is a miss, not a failure."""
+    if payload is None:
+        return None
+    try:
+        return shape.model_validate(payload)
+    except ValidationError:
+        return None
+
+
 def _load(raw: Any) -> Any:
     if isinstance(raw, dict) and set(raw) == {"content"}:
         return json.loads(_FENCE.sub("", str(raw["content"])))
     return raw
 
 
+def _normal(text: str) -> str:
+    """Writes percentages one way, so "38 percent" and "38%" are the same figure."""
+    return _PERCENT_WORD.sub(r"\1%", text)
+
+
 def _numbers(text: str) -> set[str]:
     spelled = _NUMBER_WORD.sub(lambda m: _NUMBER_WORDS[m.group(1).lower()], text)
-    return {match.replace(",", "") for match in _NUMBER.findall(spelled)}
+    return {match.replace(",", "") for match in _NUMBER.findall(_normal(spelled))}
 
 
 def _words(text: str) -> set[str]:
@@ -223,7 +240,7 @@ def _missed_percentages(
     for chunk in chunks:
         for match in _SENTENCE.finditer(chunk.text):
             sentence = match.group(0)
-            if "%" not in sentence or not _NUMBER.search(sentence):
+            if "%" not in _normal(sentence) or not _NUMBER.search(sentence):
                 continue
             taken = any(
                 chunk_id == chunk.id and start < match.end() and match.start() < end
@@ -246,9 +263,9 @@ def extract(
     """The document's claims, or None if extraction failed."""
     parts = "|".join(chunk.content_hash for chunk in chunks)
     key = cache_key("extract", parts, ctx.channel, PROMPT_VERSION, model, POLICY_VERSION)
-    stored = cache.get(key, {}) if cache else None
+    stored = _stored(cache.get(key, {}) if cache else None, _Extraction)
     if stored is not None:
-        return _locate(_Extraction.model_validate(stored), chunks)
+        return _locate(stored, chunks)
     try:
         raw = classify(
             chunks[0].data_class, [], _extract_payload(chunks), ctx.review_id
@@ -288,9 +305,9 @@ def _match(
         POLICY_VERSION,
     )
     versions = {fact.id: fact.version for fact in ctx.facts}
-    stored = cache.get(key, versions) if cache else None
+    stored = _stored(cache.get(key, versions) if cache else None, _Match)
     if stored is not None:
-        return _Match.model_validate(stored)
+        return stored
     try:
         raw = classify(data_class, [], _match_payload(unit.text, facts), ctx.review_id)
         match = _Match.model_validate(_load(raw))
@@ -374,6 +391,25 @@ def verify(
     cache: VerdictCache | None = None,
 ) -> Candidate | None:
     """Checks one claim. Returns None only for a supported claim."""
+    found = _verify(
+        unit, ctx, classify, data_class=data_class, flagged=flagged, model=model,
+        cache=cache,
+    )
+    if found is not None:
+        found.manifest["flagged"] = sorted(flagged)
+    return found
+
+
+def _verify(
+    unit: ClaimUnit,
+    ctx: CheckContext,
+    classify: ClassifyFn,
+    *,
+    data_class: str,
+    flagged: Collection[str],
+    model: str,
+    cache: VerdictCache | None = None,
+) -> Candidate | None:
     rule = statistics_rule(ctx)
     facts = candidate_facts(unit.text, ctx.facts)
     unit.depends_on = [{"fact_id": f.id, "version": f.version} for f in facts]

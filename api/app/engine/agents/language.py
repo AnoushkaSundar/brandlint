@@ -253,10 +253,14 @@ def judge(
         POLICY_VERSION,
     )
     facts = {fact.id: fact.version for fact in ctx.facts}
+    result = None
     stored = cache.get(key, facts) if cache else None
     if stored is not None:
-        result = ModelVerdict.model_validate(stored)
-    else:
+        try:
+            result = ModelVerdict.model_validate(stored)
+        except ValidationError:
+            result = None  # A stale row is a miss, not a failure.
+    if result is None:
         payload = build_payload(chunk, rule, ctx.channel, question)
         try:
             raw = classify(chunk.data_class, [rule.id], payload, ctx.review_id)
