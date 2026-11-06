@@ -33,7 +33,7 @@ from app.engine.chunking import ParsedChunk
 from app.engine.critic import Candidate
 from app.gateway.llm import POLICY_VERSION
 
-PROMPT_VERSION = f"language-v2+{ANCHORS_VERSION}"
+PROMPT_VERSION = f"language-v4+{ANCHORS_VERSION}"
 MAX_EXPLANATION = 500
 DEFAULT_WORKERS = 8
 
@@ -97,17 +97,16 @@ def applicable_rules(rules: list[Rule], channel: str) -> list[Rule]:
 
 
 def control_for(chunk: ParsedChunk) -> tuple[str, str] | None:
-    """A question code can answer, chosen from the chunk hash so Replay is stable.
+    """A question code can answer. A model that has been hijacked by the content,
+    or isn't reading it, tends to get this wrong.
 
-    A model that has been hijacked by the content, or is not reading it, tends to
-    get this wrong. Returns None when the chunk has no words to judge.
+    Always the first word: Haiku miscounts the last word often enough to turn sound
+    verdicts into false UNSUREs. Returns None when the chunk has no words to judge.
     """
     words = _WORD.findall(chunk.text)
     if not words:
         return None
-    if int(chunk.content_hash, 16) % 2 == 0:
-        return "What is the first word of the material?", words[0]
-    return "What is the last word of the material?", words[-1]
+    return "What is the first word of the material?", words[0]
 
 
 def build_payload(

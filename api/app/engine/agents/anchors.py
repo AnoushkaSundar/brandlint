@@ -6,7 +6,7 @@ These are versioned artifacts: they feed the prompt, so changing one must bump
 
 from __future__ import annotations
 
-ANCHORS_VERSION = "anchors-v2"
+ANCHORS_VERSION = "anchors-v3"
 
 ANCHORS: dict[str, list[dict[str, str]]] = {
     "R-TONE-01": [
@@ -82,6 +82,11 @@ ANCHORS: dict[str, list[dict[str, str]]] = {
             "verdict": "PASS",
             "text": "Many HR tools leave new hires waiting for logins.",
             "why": "Names no competitor.",
+        },
+        {
+            "verdict": "PASS",
+            "text": "Companies that switch to Tarnhollow save time every month.",
+            "why": "Talks about customers in general, so no competitor is named.",
         },
         {
             "verdict": "VIOLATION",
