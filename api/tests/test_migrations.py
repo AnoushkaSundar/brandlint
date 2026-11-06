@@ -14,7 +14,7 @@ from sqlalchemy import create_engine, inspect
 from tests.test_models import PRODUCT_TABLES
 
 API_DIR = Path(__file__).resolve().parents[1]
-REVISION = "anoushka_0003"
+REVISION = "anoushka_0004"
 
 
 @pytest.fixture

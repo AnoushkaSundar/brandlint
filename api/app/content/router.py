@@ -18,7 +18,7 @@ from app.content.schemas import (
     ReviewOut,
     VersionOut,
 )
-from app.contracts import ContentState, DataClass, Role
+from app.contracts import ContentSource, ContentState, DataClass, Role
 from app.workflow.models import Review
 from app.workflow.transitions import move_content
 
@@ -208,6 +208,25 @@ def add_version(
     return _detail(session, content)
 
 
+def _content_source(content: Content, version: ContentVersion) -> ContentSource:
+    """What the engine reviews. A lost file is refused before anything changes."""
+    file_bytes = None
+    if version.file_ref:
+        try:
+            file_bytes = storage.stored_path(version.file_ref).read_bytes()
+        except OSError:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                "The uploaded file is missing. Upload it again to start a review.",
+            ) from None
+    return ContentSource(
+        data_class=content.data_class,
+        text=version.text,
+        file_name=version.file_name,
+        file_bytes=file_bytes,
+    )
+
+
 @router.post(
     "/{content_id}/reviews",
     response_model=ReviewOut,
@@ -220,11 +239,12 @@ def start_review(content_id: str, user: Creator, session: SessionDep) -> Review:
             status.HTTP_409_CONFLICT, "This content can't be reviewed in its current state."
         )
     latest = _versions(session, content_id)[0]
+    source = _content_source(content, latest)
     rulebook_version = current_rulebook_version()
     review = Review(
         content_version_id=latest.id,
         engine_review_id=engine_client.start_review(
-            latest.id, content.channel, rulebook_version
+            latest.id, content.channel, rulebook_version, source
         ),
         channel=content.channel,
         rulebook_version=rulebook_version,
