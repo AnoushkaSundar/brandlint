@@ -84,6 +84,10 @@ def _findings_for_review(review_id: str) -> list[dict]:
     return data.findings_for_piece(piece)
 
 
+def review_findings(review_id: str) -> list[dict]:
+    return _findings_for_review(review_id)
+
+
 def _require_finding(finding_id: str) -> tuple[str, dict]:
     match = data.find_finding(finding_id)
     if match is None:

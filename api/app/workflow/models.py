@@ -43,12 +43,15 @@ class Decision(Base):
     __tablename__ = "decisions"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    # Finding ids repeat between mock reviews, so decisions are scoped to a review.
+    review_id: Mapped[str] = mapped_column(ForeignKey("reviews.id"), index=True)
     # Findings belong to the engine, so this is a plain id rather than a foreign key.
-    finding_id: Mapped[str] = mapped_column(String(64), index=True)
+    finding_id: Mapped[str] = mapped_column(String(255), index=True)
     actor_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
     role: Mapped[str] = mapped_column(String(32))
     action: Mapped[str] = mapped_column(String(32))
     reason: Mapped[str | None] = mapped_column(Text)
+    fix_text: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, index=True
     )
@@ -62,7 +65,7 @@ class Comment(Base):
         ForeignKey("content_versions.id"), index=True
     )
     # Empty for a comment on the whole version.
-    finding_id: Mapped[str | None] = mapped_column(String(64), index=True)
+    finding_id: Mapped[str | None] = mapped_column(String(255), index=True)
     span: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     parent_id: Mapped[str | None] = mapped_column(ForeignKey("comments.id"))
     author_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
@@ -81,7 +84,7 @@ class AuditLog(Base):
     role: Mapped[str] = mapped_column(String(32))
     action: Mapped[str] = mapped_column(String(64))
     target_type: Mapped[str] = mapped_column(String(32))
-    target_id: Mapped[str] = mapped_column(String(64), index=True)
+    target_id: Mapped[str] = mapped_column(String(255), index=True)
     before: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     after: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     rulebook_version: Mapped[int | None] = mapped_column(Integer)

@@ -76,11 +76,13 @@ def test_tables_hold_every_contract_field():
     assert {"id", "kind", "file_ref", "meta"} == columns("assets")
     assert {
         "id",
+        "review_id",
         "finding_id",
         "actor_id",
         "role",
         "action",
         "reason",
+        "fix_text",
         "created_at",
     } == columns("decisions")
     assert {"id", "review_id", "check", "text", "explanation", "created_at"} == columns(
