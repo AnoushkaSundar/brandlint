@@ -17,7 +17,7 @@ type FixState =
   | { kind: "closed" }
   | { kind: "loading"; message: string }
   | { kind: "showing"; fix: FixSuggestion; error?: string; exhausted?: boolean }
-  | { kind: "editing"; fix: FixSuggestion; text: string }
+  | { kind: "editing"; fix: FixSuggestion; text: string; error?: string }
   | { kind: "failed"; message: string; final: boolean };
 
 export function FixPanel({
@@ -48,10 +48,14 @@ export function FixPanel({
     );
   }
 
-  function save(input: DecisionInput, fix: FixSuggestion) {
+  /** A failed save goes back to `from`, so nothing the person typed is lost. */
+  function save(
+    input: DecisionInput,
+    from: Extract<FixState, { kind: "showing" | "editing" }>,
+  ) {
     setState({ kind: "loading", message: "Saving…" });
     onDecide(input).catch((caught: ApiError) =>
-      setState({ kind: "showing", fix, error: caught.message }),
+      setState({ ...from, error: caught.message }),
     );
   }
 
@@ -113,16 +117,18 @@ export function FixPanel({
         <p className="text-muted-foreground">
           A reviewer will check your wording before this goes further.
         </p>
+        {state.error && (
+          <p role="alert" className="border-l-2 border-destructive pl-2">
+            {state.error}
+          </p>
+        )}
         <div className="flex flex-wrap gap-2">
           <Button
             type="button"
             size="sm"
             disabled={!state.text.trim()}
             onClick={() =>
-              save(
-                { action: "edit_fix", fix_text: state.text.trim() },
-                state.fix,
-              )
+              save({ action: "edit_fix", fix_text: state.text.trim() }, state)
             }
           >
             Save edit
@@ -161,7 +167,9 @@ export function FixPanel({
         <Button
           type="button"
           size="sm"
-          onClick={() => save({ action: "accept_fix" }, fix)}
+          onClick={() =>
+            save({ action: "accept_fix", attempt: fix.attempt }, state)
+          }
         >
           Accept
         </Button>

@@ -16,14 +16,20 @@ from app.workflow.models import FixOffer, Review
 
 MAX_FIX_ATTEMPTS = 2
 NO_SAFE_FIX = "No safe fix found; marked for review"
+HIDDEN_FONT_PT = 4
+_ZERO_WIDTH = dict.fromkeys(map(ord, "\u200b\u200c\u200d\u2060\ufeff"))
 
 
 class HasFixText(Protocol):
     fix_text: str | None
 
 
-class FixesOverlap(ValueError):
-    """Two saved fixes rewrite the same text. Decisions refuse this before it's stored."""
+class FixCannotApply(ValueError):
+    """A saved fix has nowhere to go. Decisions refuse this before it's stored."""
+
+
+class FixesOverlap(FixCannotApply):
+    """Two saved fixes rewrite the same text."""
 
 
 def _offers(session: Session, review: Review, finding_id: str) -> list[FixOffer]:
@@ -78,6 +84,26 @@ def offer_fix(
     return suggestion
 
 
+def is_readable(chunk: Chunk) -> bool:
+    """Whether a person reads this as copy. Matches the engine's hidden check.
+
+    Zero-width characters aren't here: they sit inside visible sentences, so
+    only the characters are removed, not the chunk.
+    """
+    style = chunk.style or {}
+    color, background = style.get("color"), style.get("background")
+    font_pt = style.get("font_pt")
+    return not (
+        chunk.kind == "image"
+        or style.get("hidden")
+        or style.get("from_comment")
+        or style.get("from_metadata")
+        or style.get("from_ocr")
+        or (color and background and color.lower() == background.lower())
+        or (font_pt is not None and font_pt < HIDDEN_FONT_PT)
+    )
+
+
 def fix_span(finding: Finding) -> Span | None:
     """The span a fix rewrites. Empty spans mark no text, so they don't count."""
     spans = [span for span in finding.spans if span.end > span.start]
@@ -92,12 +118,25 @@ def spans_overlap(first: Span, second: Span) -> bool:
     )
 
 
+def can_apply(finding: Finding, chunks: Sequence[Chunk]) -> bool:
+    """Whether a fix for this finding would reach text a person reads."""
+    span = fix_span(finding)
+    if span is None:
+        return True
+    target = next((chunk for chunk in chunks if chunk.id == span.chunk_id), None)
+    return target is not None and is_readable(target)
+
+
 def text_with_fixes(
     chunks: Sequence[Chunk],
     findings: Iterable[Finding],
     progress: Mapping[str, HasFixText],
 ) -> str:
-    """Rebuilds the text with each fix in place. Spans are offsets within a chunk."""
+    """Rebuilds the text with each fix in place. Spans are offsets within a chunk.
+
+    Only readable chunks are included, because hidden text must never come back as
+    ordinary copy for the manager and legal.
+    """
     edits: dict[str, list[tuple[int, int, str]]] = defaultdict(list)
     additions: list[str] = []
     for finding in findings:
@@ -107,13 +146,16 @@ def text_with_fixes(
         span = fix_span(finding)
         if span is None:
             # A document-level fix has nowhere to go, such as a missing disclaimer.
-            additions.append(standing.fix_text)
+            if standing.fix_text:
+                additions.append(standing.fix_text)
         else:
             edits[span.chunk_id].append((span.start, span.end, standing.fix_text))
 
     parts = []
     for chunk in sorted(chunks, key=lambda item: item.ordinal):
-        if chunk.kind == "image":
+        if not is_readable(chunk):
+            if edits[chunk.id]:
+                raise FixCannotApply(chunk.id)
             continue
         text = chunk.text
         limit = len(text)
@@ -123,7 +165,7 @@ def text_with_fixes(
                 raise FixesOverlap(chunk.id)
             text = text[:start] + fix_text + text[end:]
             limit = start
-        parts.append(text)
+        parts.append(text.translate(_ZERO_WIDTH))
     return "\n\n".join([*parts, *additions])
 
 
