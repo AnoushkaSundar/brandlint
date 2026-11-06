@@ -6,12 +6,14 @@ import { expect, type Page, test } from "@playwright/test";
 
 import { type Finding } from "../lib/contracts";
 import { type Chunk } from "../lib/engineClient";
+import { trackProgress } from "../lib/findingLabels";
 import {
   type Highlight,
   highlightsByChunk,
   segmentText,
   sortFindings,
 } from "../lib/highlights";
+import { wordDiff } from "../lib/wordDiff";
 
 const WCAG_22_AA = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"];
 const DEMO = join(__dirname, "..", "..", "demo");
@@ -75,10 +77,21 @@ function stream(findings: readonly Finding[], finished = true): string {
   return events.join("");
 }
 
+const RULES = demoJson<{ id: string; clause_ref: string }[]>(
+  "brand",
+  "rules.json",
+);
+
 async function stubReview(
   page: Page,
   { content = CONTENT as unknown, chunks = CHUNKS, findings = FINDINGS } = {},
 ) {
+  await page.route("**/stub-api/admin/rulebook*", (route) =>
+    route.fulfill({ json: RULES }),
+  );
+  await page.route("**/stub-api/memory/precedents*", (route) =>
+    route.fulfill({ json: [] }),
+  );
   await page.route("**/stub-api/auth/me", (route) =>
     route.fulfill({
       json: {
@@ -107,7 +120,11 @@ async function stubReview(
 function findingCards(page: Page) {
   return page
     .getByRole("region", { name: "Findings" })
-    .getByRole("button");
+    .getByRole("article");
+}
+
+function card(page: Page, explanation: string) {
+  return findingCards(page).filter({ hasText: explanation });
 }
 
 function highlight(page: Page, text: string) {
@@ -115,7 +132,7 @@ function highlight(page: Page, text: string) {
 }
 
 function cardFor(page: Page, explanation: string) {
-  return findingCards(page).filter({ hasText: explanation });
+  return findingCards(page).getByRole("button", { name: explanation });
 }
 
 async function expectNoAccessibilityViolations(page: Page) {
@@ -398,6 +415,574 @@ test.describe("review screen", () => {
   });
 });
 
+const BASE = FINDINGS[0];
+const REPLAY = {
+  identical: true,
+  verdict: "VIOLATION",
+  manifest: {
+    rule_id: "R-TERM-02",
+    rule_version: 1,
+    fact_ids: [],
+    models: ["claude-haiku-4-5"],
+    as_of: "2026-11-07",
+  },
+};
+
+function fixFor(attempt: 1 | 2, suggested = "Tarnhollow Landing") {
+  return {
+    finding_id: BASE.id,
+    original: "Tarnhollow Onramp",
+    suggested,
+    diff: "- Tarnhollow Onramp\n+ Tarnhollow Landing",
+    attempt,
+  };
+}
+
+/** Answers each fix request in turn, repeating the last answer. */
+async function stubFixes(
+  page: Page,
+  answers: { status?: number; json: unknown }[],
+) {
+  let call = 0;
+  await page.route("**/stub-api/engine/findings/*/fix", (route) => {
+    const answer = answers[Math.min(call, answers.length - 1)];
+    call += 1;
+    return route.fulfill(answer);
+  });
+}
+
+test.describe("comparing words", () => {
+  test("identical text has one unchanged part", () => {
+    expect(wordDiff("a new hire", "a new hire")).toEqual([
+      { kind: "same", text: "a new hire" },
+    ]);
+  });
+
+  test("a changed word leaves the rest alone", () => {
+    expect(wordDiff("Tarnhollow Onramp", "Tarnhollow Landing")).toEqual([
+      { kind: "same", text: "Tarnhollow " },
+      { kind: "removed", text: "Onramp" },
+      { kind: "added", text: "Landing" },
+    ]);
+  });
+
+  test("the parts rebuild both versions", () => {
+    const before = "cut onboarding time for every new starter by 80%";
+    const after = "cut onboarding time for new hires by 38% on average";
+    const parts = wordDiff(before, after);
+
+    const rebuild = (skip: string) =>
+      parts
+        .filter((part) => part.kind !== skip)
+        .map((part) => part.text)
+        .join("");
+    expect(rebuild("added")).toBe(before);
+    expect(rebuild("removed")).toBe(after);
+  });
+});
+
+test.describe("reading progress from findings", () => {
+  const coded = { ...BASE, tier: 0 as const };
+  const ai = { ...BASE, tier: 1 as const, unit_type: "chunk" as const };
+  const claim = { ...BASE, tier: 1 as const, unit_type: "claim" as const };
+  const whole = { ...BASE, tier: 1 as const, unit_type: "document" as const };
+
+  test("sorts findings into their tracks", () => {
+    expect(
+      trackProgress([coded, coded, ai, claim, whole], true).map(
+        (track) => track.count,
+      ),
+    ).toEqual([2, 1, 1, 1]);
+  });
+
+  test("code checks finish when the first AI finding arrives", () => {
+    const [code, chunk] = trackProgress([coded, ai], false);
+
+    expect(code.done).toBe(true);
+    expect(chunk.done).toBe(false);
+  });
+
+  test("nothing is done before the stream says so", () => {
+    expect(
+      trackProgress([coded], false).some((track) => track.done),
+    ).toBe(false);
+  });
+
+  test("everything is done when the stream ends", () => {
+    expect(trackProgress([], true).every((track) => track.done)).toBe(true);
+  });
+});
+
+test.describe("finding cards", () => {
+  test("show severity, check, confidence and the explanation", async ({
+    page,
+  }) => {
+    await stubReview(page);
+    await page.goto("/content/c1/review");
+
+    const found = card(page, "claim an 80% cut");
+    await expect(found).toContainText("High");
+    await expect(found).toContainText("Claim");
+    await expect(found).toContainText("97% confidence");
+  });
+
+  test("quote the source with its rule, clause and version", async ({
+    page,
+  }) => {
+    await stubReview(page);
+    await page.goto("/content/c1/review");
+
+    const found = card(page, "retired name");
+    await expect(found.locator("blockquote")).toContainText(
+      "The product is Tarnhollow Landing.",
+    );
+    await expect(found.locator("figcaption")).toHaveText(
+      "R-TERM-02 §3.2, version 1",
+    );
+  });
+
+  test("still quote the source if the rulebook can't load", async ({
+    page,
+  }) => {
+    await stubReview(page);
+    await page.route("**/stub-api/admin/rulebook*", (route) => route.abort());
+    await page.goto("/content/c1/review");
+
+    const found = card(page, "retired name");
+    await expect(found.locator("blockquote")).toBeVisible();
+    await expect(found.locator("figcaption")).toHaveText(
+      "R-TERM-02, version 1",
+    );
+  });
+
+  test("badge AI findings with the model and code findings as code", async ({
+    page,
+  }) => {
+    await stubReview(page);
+    await page.goto("/content/c1/review");
+
+    const aiFinding = FINDINGS.find((item) => item.ai_generated);
+    await expect(card(page, "claim an 80% cut")).toContainText(
+      `AI: ${aiFinding?.models_used[0]}`,
+    );
+    await expect(card(page, "retired name")).toContainText("Code check");
+  });
+
+  test("explain themselves only when asked", async ({ page }) => {
+    await stubReview(page);
+    await page.goto("/content/c1/review");
+
+    const found = card(page, "retired name");
+    const step = found.getByText("Matched the renamed term");
+    await expect(step).toBeHidden();
+
+    await found.getByText("Why was this flagged?").click();
+
+    await expect(step).toBeVisible();
+    await expect(found).toContainText("Sources: R-TERM-02 §3.2");
+  });
+
+  test("report a split vote", async ({ page }) => {
+    await stubReview(page, {
+      findings: [
+        {
+          ...BASE,
+          vote: { variants: 3, agree: 2, split: true },
+        },
+      ],
+    });
+    await page.goto("/content/c1/review");
+    await findingCards(page).getByText("Why was this flagged?").click();
+
+    await expect(findingCards(page)).toContainText(
+      "2 of 3 rubrics agreed, so the vote was split.",
+    );
+  });
+
+  test("label a precedent as context only", async ({ page }) => {
+    await stubReview(page);
+    await page.route("**/stub-api/memory/precedents*", (route) =>
+      route.fulfill({
+        json: [
+          {
+            decision_id: "d1",
+            rule_id: "R-TERM-03",
+            rule_version: 1,
+            channel: "blog",
+            reason: "Used in a direct quote from a customer.",
+            reviewer: "Lena Fischer",
+            date: "2026-10-12",
+          },
+        ],
+      }),
+    );
+    await page.goto("/content/c1/review");
+
+    const found = card(page, "retired name");
+    await expect(found).toContainText("Earlier decision, context only");
+    await expect(found).toContainText("Lena Fischer, 2026-10-12");
+  });
+
+  test("leave precedents out when there are none or the lookup fails", async ({
+    page,
+  }) => {
+    await stubReview(page);
+    await page.route("**/stub-api/memory/precedents*", (route) =>
+      route.abort(),
+    );
+    await page.goto("/content/c1/review");
+
+    await expect(findingCards(page)).toHaveCount(FINDINGS.length);
+    await expect(page.locator("main")).not.toContainText("context only");
+    await expect(page.locator("main").getByRole("alert")).toHaveCount(0);
+  });
+
+  test("an UNSURE finding with no confidence shows no score and no fix", async ({
+    page,
+  }) => {
+    await stubReview(page, {
+      findings: [
+        {
+          ...BASE,
+          verdict: "UNSURE",
+          confidence: 0,
+          fix_available: false,
+          explanation: "The model couldn't decide.",
+        },
+      ],
+    });
+    await page.goto("/content/c1/review");
+
+    const found = card(page, "couldn't decide");
+    await expect(found).toContainText("Needs a reviewer");
+    await expect(found).not.toContainText("confidence");
+    await expect(found.getByRole("button", { name: "Suggest fix" })).toHaveCount(
+      0,
+    );
+  });
+
+  test("several UNSURE findings on one chunk are all listed", async ({
+    page,
+  }) => {
+    await stubReview(page, {
+      findings: ["a", "b", "c"].map((letter) => ({
+        ...BASE,
+        id: `unsure-${letter}`,
+        verdict: "UNSURE" as const,
+        confidence: 0,
+        fix_available: false,
+        explanation: `Unsure about ${letter}.`,
+      })),
+    });
+    await page.goto("/content/c1/review");
+
+    await expect(
+      findingCards(page).filter({ hasText: "Needs a reviewer" }),
+    ).toHaveCount(3);
+  });
+
+  test("a security rule is named, with no clause or version", async ({
+    page,
+  }) => {
+    await stubReview(page, {
+      findings: [
+        {
+          ...BASE,
+          check: "hidden_content",
+          rule_id: "SEC-HIDDEN-CONTENT",
+          rule_version: null,
+          cited_text: "Content must not hide text from the reader.",
+          explanation: "This text is hidden from the reader.",
+        },
+      ],
+    });
+    await page.goto("/content/c1/review");
+
+    const found = card(page, "hidden from the reader");
+    await expect(found.locator("blockquote")).toContainText("must not hide");
+    await expect(found.locator("figcaption")).toHaveText(
+      "BrandLint security rule",
+    );
+  });
+
+  test("a codename finding cites its rule without any fact", async ({
+    page,
+  }) => {
+    await stubReview(page, {
+      findings: [
+        {
+          ...BASE,
+          rule_id: "R-CLAIM-05",
+          rule_version: 1,
+          fact_ids: [],
+          cited_text: "Never name an unreleased product.",
+          explanation: "This names an unreleased product.",
+        },
+      ],
+    });
+    await page.goto("/content/c1/review");
+
+    await expect(
+      card(page, "unreleased product").locator("figcaption"),
+    ).toContainText("R-CLAIM-05");
+  });
+
+  test("a document-level finding says so and highlights nothing", async ({
+    page,
+  }) => {
+    await stubReview(page, {
+      findings: [
+        {
+          ...BASE,
+          check: "required_element",
+          unit_type: "document",
+          spans: [],
+          rule_id: "R-REQ-01",
+          explanation: "The disclaimer is missing.",
+        },
+      ],
+    });
+    await page.goto("/content/c1/review");
+
+    const found = card(page, "disclaimer is missing");
+    await expect(found).toContainText("Applies to the whole document.");
+    await expect(page.locator("mark")).toHaveCount(0);
+
+    await cardFor(page, "disclaimer is missing").click();
+
+    await expect(cardFor(page, "disclaimer is missing")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  });
+
+  test("progress is shown for every track", async ({ page }) => {
+    await stubReview(page);
+    await page.goto("/content/c1/review");
+
+    const progress = page.getByRole("list", { name: "Progress" });
+    await expect(progress.getByRole("listitem")).toHaveCount(4);
+    await expect(progress).toContainText("Code checks: 5, done");
+    await expect(progress).toContainText("Claims: 1, done");
+  });
+});
+
+test.describe("suggesting a fix", () => {
+  const suggestFix = (page: Page) =>
+    card(page, "retired name").getByRole("button", { name: "Suggest fix" });
+
+  test("is only offered when a fix is available", async ({ page }) => {
+    await stubReview(page);
+    await page.goto("/content/c1/review");
+
+    await expect(suggestFix(page)).toBeVisible();
+    await expect(
+      card(page, "Bluewren").getByRole("button", { name: "Suggest fix" }),
+    ).toHaveCount(0);
+  });
+
+  test("shows the change as tracked changes", async ({ page }) => {
+    await stubReview(page);
+    await stubFixes(page, [{ json: fixFor(1) }]);
+    await page.goto("/content/c1/review");
+
+    await suggestFix(page).click();
+
+    const found = card(page, "retired name");
+    await expect(found).toContainText("attempt 1 of 2");
+    await expect(found.locator("del")).toContainText("Onramp");
+    await expect(found.locator("ins")).toContainText("Landing");
+  });
+
+  test("nothing changes until someone clicks", async ({ page }) => {
+    await stubReview(page);
+    await stubFixes(page, [{ json: fixFor(1) }]);
+    await page.goto("/content/c1/review");
+
+    await suggestFix(page).click();
+    await expect(card(page, "retired name").locator("ins")).toBeVisible();
+
+    await expect(highlight(page, "Tarnhollow Onramp")).toBeVisible();
+    await expect(card(page, "retired name")).not.toContainText("Fix accepted");
+  });
+
+  test("accepting records it and ends the offer", async ({ page }) => {
+    await stubReview(page);
+    await stubFixes(page, [{ json: fixFor(1) }]);
+    await page.goto("/content/c1/review");
+
+    await suggestFix(page).click();
+    await card(page, "retired name")
+      .getByRole("button", { name: "Accept" })
+      .click();
+
+    await expect(card(page, "retired name")).toContainText("Fix accepted");
+    await expect(suggestFix(page)).toHaveCount(0);
+  });
+
+  test("editing starts from the suggestion and needs some text", async ({
+    page,
+  }) => {
+    await stubReview(page);
+    await stubFixes(page, [{ json: fixFor(1) }]);
+    await page.goto("/content/c1/review");
+
+    await suggestFix(page).click();
+    const found = card(page, "retired name");
+    await found.getByRole("button", { name: "Edit" }).click();
+
+    const field = found.getByLabel("Your version");
+    await expect(field).toHaveValue("Tarnhollow Landing");
+
+    await field.fill("   ");
+    await expect(found.getByRole("button", { name: "Save edit" })).toBeDisabled();
+
+    await field.fill("The Tarnhollow Landing app");
+    await found.getByRole("button", { name: "Save edit" }).click();
+
+    await expect(found).toContainText("Edited fix saved");
+  });
+
+  test("going back from editing keeps the suggestion", async ({ page }) => {
+    await stubReview(page);
+    await stubFixes(page, [{ json: fixFor(1) }]);
+    await page.goto("/content/c1/review");
+
+    await suggestFix(page).click();
+    const found = card(page, "retired name");
+    await found.getByRole("button", { name: "Edit" }).click();
+    await found.getByRole("button", { name: "Back to suggestion" }).click();
+
+    await expect(found.locator("ins")).toContainText("Landing");
+  });
+
+  test("closing leaves the finding open", async ({ page }) => {
+    await stubReview(page);
+    await stubFixes(page, [{ json: fixFor(1) }]);
+    await page.goto("/content/c1/review");
+
+    await suggestFix(page).click();
+    await card(page, "retired name")
+      .getByRole("button", { name: "Close" })
+      .click();
+
+    await expect(suggestFix(page)).toBeVisible();
+  });
+
+  test("a second attempt is offered once", async ({ page }) => {
+    await stubReview(page);
+    await stubFixes(page, [
+      { json: fixFor(1) },
+      { json: fixFor(2, "Tarnhollow Landing today") },
+    ]);
+    await page.goto("/content/c1/review");
+
+    await suggestFix(page).click();
+    const found = card(page, "retired name");
+    await found.getByRole("button", { name: "Try another" }).click();
+
+    await expect(found).toContainText("attempt 2 of 2");
+    await expect(found.getByRole("button", { name: "Try another" })).toHaveCount(
+      0,
+    );
+  });
+
+  test("two failed attempts end in the agreed message", async ({ page }) => {
+    await stubReview(page);
+    await stubFixes(page, [
+      { status: 422, json: { detail: "No safe fix found; marked for review" } },
+    ]);
+    await page.goto("/content/c1/review");
+
+    await suggestFix(page).click();
+
+    const found = card(page, "retired name");
+    await expect(found.getByRole("alert")).toHaveText(
+      "No safe fix found; marked for review",
+    );
+    await expect(found.getByRole("button", { name: "Try again" })).toHaveCount(
+      0,
+    );
+  });
+
+  test("a server problem can be tried again", async ({ page }) => {
+    await stubReview(page);
+    await stubFixes(page, [
+      { status: 500, json: {} },
+      { json: fixFor(1) },
+    ]);
+    await page.goto("/content/c1/review");
+
+    await suggestFix(page).click();
+    const found = card(page, "retired name");
+    await found.getByRole("button", { name: "Try again" }).click();
+
+    await expect(found.locator("ins")).toContainText("Landing");
+  });
+});
+
+test.describe("replaying a verdict", () => {
+  const replay = (page: Page) =>
+    card(page, "retired name").getByRole("button", { name: "Replay" });
+
+  test("confirms an identical result and lists its inputs", async ({ page }) => {
+    await stubReview(page);
+    await page.route("**/stub-api/engine/verdicts/*/replay", (route) =>
+      route.fulfill({ json: REPLAY }),
+    );
+    await page.goto("/content/c1/review");
+
+    await replay(page).click();
+
+    const found = card(page, "retired name");
+    await expect(found.getByRole("status")).toHaveText("Identical result ✓");
+    await expect(found.locator("dl")).toContainText("Rule version");
+    await expect(found).toContainText("claude-haiku-4-5");
+  });
+
+  test("works when the engine sends no inputs", async ({ page }) => {
+    await stubReview(page);
+    await page.route("**/stub-api/engine/verdicts/*/replay", (route) =>
+      route.fulfill({ json: { identical: true, verdict: "VIOLATION" } }),
+    );
+    await page.goto("/content/c1/review");
+
+    await replay(page).click();
+
+    await expect(card(page, "retired name").getByRole("status")).toHaveText(
+      "Identical result ✓",
+    );
+  });
+
+  test("says so when the result differs", async ({ page }) => {
+    await stubReview(page);
+    await page.route("**/stub-api/engine/verdicts/*/replay", (route) =>
+      route.fulfill({ json: { ...REPLAY, identical: false, verdict: "UNSURE" } }),
+    );
+    await page.goto("/content/c1/review");
+
+    await replay(page).click();
+
+    await expect(card(page, "retired name").getByRole("status")).toHaveText(
+      "Different result: UNSURE",
+    );
+  });
+
+  test("reports a failure", async ({ page }) => {
+    await stubReview(page);
+    await page.route("**/stub-api/engine/verdicts/*/replay", (route) =>
+      route.fulfill({ status: 404, json: { detail: "Finding not found" } }),
+    );
+    await page.goto("/content/c1/review");
+
+    await replay(page).click();
+
+    await expect(card(page, "retired name").getByRole("alert")).toHaveText(
+      "Finding not found",
+    );
+  });
+});
+
 test.describe("mobile", () => {
   test.use({ viewport: { width: 390, height: 844 } });
 
@@ -420,6 +1005,41 @@ test.describe("accessibility (WCAG 2.2 AA)", () => {
     await stubReview(page);
     await page.goto("/content/c1/review");
     await expect(findingCards(page)).toHaveCount(FINDINGS.length);
+    await expectNoAccessibilityViolations(page);
+  });
+
+  test("an open fix and trace have no violations", async ({ page }) => {
+    await stubReview(page);
+    await stubFixes(page, [{ json: fixFor(1) }]);
+    await page.route("**/stub-api/engine/verdicts/*/replay", (route) =>
+      route.fulfill({ json: REPLAY }),
+    );
+    await page.goto("/content/c1/review");
+
+    const found = card(page, "retired name");
+    await found.getByRole("button", { name: "Suggest fix" }).click();
+    await found.getByRole("button", { name: "Replay" }).click();
+    await found.getByText("Why was this flagged?").click();
+    await expect(found.locator("ins")).toBeVisible();
+    await expect(found.getByRole("status")).toBeVisible();
+
+    await expectNoAccessibilityViolations(page);
+  });
+
+  test("a failed fix on a selected card has no violations", async ({
+    page,
+  }) => {
+    await stubReview(page);
+    await stubFixes(page, [
+      { status: 422, json: { detail: "No safe fix found; marked for review" } },
+    ]);
+    await page.goto("/content/c1/review");
+
+    await cardFor(page, "retired name").click();
+    const found = card(page, "retired name");
+    await found.getByRole("button", { name: "Suggest fix" }).click();
+    await expect(found.getByRole("alert")).toBeVisible();
+
     await expectNoAccessibilityViolations(page);
   });
 
