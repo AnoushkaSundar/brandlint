@@ -1152,6 +1152,37 @@ test.describe("replaying a verdict", () => {
     await expect(found).toContainText("claude-haiku-4-5");
   });
 
+  test("shows the real engine's inputs in readable form", async ({ page }) => {
+    await stubReview(page);
+    await page.route("**/stub-api/engine/verdicts/*/replay", (route) =>
+      route.fulfill({
+        json: {
+          identical: true,
+          verdict: "VIOLATION",
+          manifest: {
+            kind: "language",
+            chunk_id: "blog-p2",
+            content_hash: "abc123",
+            rule: { id: "R-TONE-01", version: 1, text: "Be warm." },
+            facts: [{ id: "F-001", version: 1 }],
+            model: "claude-haiku-4-5",
+            flagged: false,
+            as_of: "2026-11-07",
+          },
+        },
+      }),
+    );
+    await page.goto("/content/c1/review");
+
+    await replay(page).click();
+
+    const inputs = card(page, "retired name").locator("dl");
+    await expect(inputs).toContainText("R-TONE-01, version 1");
+    await expect(inputs).toContainText("F-001, version 1");
+    await expect(inputs).not.toContainText("[object Object]");
+    await expect(inputs).not.toContainText("abc123");
+  });
+
   test("works when the engine sends no inputs", async ({ page }) => {
     await stubReview(page);
     await page.route("**/stub-api/engine/verdicts/*/replay", (route) =>
