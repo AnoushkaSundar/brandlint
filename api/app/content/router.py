@@ -9,7 +9,7 @@ from app.admin.rulebook import current_rulebook_version
 from app.auth.dependencies import CurrentUser, SessionDep, require_roles
 from app.auth.models import User
 from app.clients import engine as engine_client
-from app.content import storage
+from app.content import rereview, storage
 from app.content.access import (
     can_start_again,
     latest_review,
@@ -57,6 +57,18 @@ def _owned(content_id: str, user: User, session: Session) -> Content:
     return content
 
 
+NUL_REFUSED = "Text can't contain a null character. Remove it and try again."
+
+
+def _refuse_nul(*values: str | None) -> None:
+    """Postgres can't store a null character, so it's refused before anything is saved.
+
+    It isn't stripped: a review has to see exactly what was sent.
+    """
+    if any(value and "\x00" in value for value in values):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, NUL_REFUSED)
+
+
 def _body_from(
     text: str, file: UploadFile | None
 ) -> tuple[str, storage.CheckedUpload | None]:
@@ -73,6 +85,7 @@ def _body_from(
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_CONTENT, "Paste some text or upload a file."
         )
+    _refuse_nul(text, file.filename if file else None)
     if file is None:
         return text, None
 
@@ -80,13 +93,10 @@ def _body_from(
     try:
         upload = storage.check_upload(file.filename or "", data)
     except storage.UploadTooLarge as error:
-        raise HTTPException(
-            status.HTTP_413_CONTENT_TOO_LARGE, str(error)
-        ) from None
+        raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, str(error)) from None
     except storage.UploadRejected as error:
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_CONTENT, str(error)
-        ) from None
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(error)) from None
+    _refuse_nul(upload.text)
     return upload.text, upload
 
 
@@ -134,6 +144,7 @@ def _detail(session: Session, content: Content) -> ContentDetail:
         **ContentOut.model_validate(content).model_dump(),
         versions=[VersionOut.model_validate(v) for v in versions],
         latest_review=ReviewOut.model_validate(review) if review else None,
+        rereview=rereview.pending(session, content.id, review),
     )
 
 
@@ -156,6 +167,7 @@ def create_content(
     text: PastedText = "",
     file: Upload = None,
 ) -> ContentDetail:
+    _refuse_nul(title, source)
     body, upload = _body_from(text, file)
     content = Content(
         title=title.strip(),
@@ -231,7 +243,8 @@ def start_review(content_id: str, user: Creator, session: SessionDep) -> Review:
     content = _owned(content_id, user, session)
     if content.state not in REVIEWABLE_STATES:
         raise HTTPException(
-            status.HTTP_409_CONFLICT, "This content can't be reviewed in its current state."
+            status.HTTP_409_CONFLICT,
+            "This content can't be reviewed in its current state.",
         )
     latest = _versions(session, content_id)[0]
     previous = latest_review(session, content_id)
@@ -242,6 +255,8 @@ def start_review(content_id: str, user: Creator, session: SessionDep) -> Review:
         and previous is not None
         and previous.content_version_id == latest.id
         and previous.rulebook_version == current_rulebook_version(session)
+        # A changed fact is a real reason too, once an admin has asked.
+        and rereview.pending(session, content_id, previous) is None
     ):
         raise HTTPException(
             status.HTTP_409_CONFLICT, "Add a new version to review it again."
@@ -249,8 +264,10 @@ def start_review(content_id: str, user: Creator, session: SessionDep) -> Review:
     if content.state == ContentState.ai_review.value and previous is not None:
         run = engine_client.review_status(previous.engine_review_id, session)
         if not can_start_again(content.state, run):
-            message = "This review is still running." if run == "running" else (
-                "This review has already finished."
+            message = (
+                "This review is still running."
+                if run == "running"
+                else ("This review has already finished.")
             )
             raise HTTPException(status.HTTP_409_CONFLICT, message)
     source = _content_source(content, latest)

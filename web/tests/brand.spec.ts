@@ -187,6 +187,33 @@ test.describe("facts", () => {
       notice.getByRole("link", { name: "“30% faster”" }),
     ).toHaveAttribute("href", "/content/c1");
   });
+
+  test("queues a re-review of an affected piece", async ({ page }) => {
+    const sent: unknown[] = [];
+    await page.route("**/stub-api/memory/impact*", (route) =>
+      route.fulfill({
+        json: [
+          { content_id: "c1", state: "published", claim_text: "30% faster" },
+        ],
+      }),
+    );
+    await page.route("**/stub-api/admin/facts/F-001/rereview", (route) => {
+      sent.push(route.request().postDataJSON());
+      return route.fulfill({ json: { queued: ["c1"] } });
+    });
+    await page.goto("/brand/facts");
+
+    await page
+      .getByRole("button", { name: "Affected pieces for F-001" })
+      .click();
+    await page
+      .getByRole("button", { name: "Queue re-review of “30% faster”" })
+      .click();
+
+    await expect(page.locator("main")).toContainText("Re-review queued");
+    expect(sent).toEqual([{ content_ids: ["c1"] }]);
+    await noViolations(page);
+  });
 });
 
 test("terms and assets screens pass an accessibility scan", async ({

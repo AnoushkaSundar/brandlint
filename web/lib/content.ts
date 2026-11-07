@@ -35,6 +35,8 @@ export type Review = {
 export type ContentDetail = ContentSummary & {
   versions: ContentVersion[];
   latest_review: Review | null;
+  // An admin asked for another review because a fact this piece cites changed.
+  rereview?: { fact_id: string; requested_at: string } | null;
 };
 
 export const CHANNELS = [

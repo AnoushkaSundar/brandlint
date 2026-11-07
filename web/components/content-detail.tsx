@@ -75,8 +75,7 @@ export function ContentDetail({ id }: { id: string }) {
   const latest = content.versions[0];
   const isOwner = content.creator_id === user.id;
   const canEdit = isOwner && !LOCKED_STATES.includes(content.state);
-  const canStartReview =
-    isOwner && REVIEWABLE_STATES.includes(content.state);
+  const canStartReview = isOwner && REVIEWABLE_STATES.includes(content.state);
   // A review of an older version shouldn't be mistaken for one of the latest.
   const reviewIsCurrent =
     content.latest_review?.content_version_id === latest.id;
@@ -130,9 +129,11 @@ export function ContentDetail({ id }: { id: string }) {
               Open review
             </Link>
           )}
-          {canStartReview && !reviewIsCurrent && (
+          {canStartReview && (!reviewIsCurrent || content.rereview) && (
             <Button onClick={handleStartReview} disabled={pending}>
-              Start review
+              {content.rereview && reviewIsCurrent
+                ? "Review again"
+                : "Start review"}
             </Button>
           )}
         </div>
@@ -156,6 +157,18 @@ export function ContentDetail({ id }: { id: string }) {
           <dd className="font-medium capitalize">{content.data_class}</dd>
         </div>
       </dl>
+
+      {content.rereview && (
+        <p role="status" className="mt-4 rounded-lg border p-3 text-sm">
+          A fact this piece cites, {content.rereview.fact_id}, has changed, and
+          an admin asked for another review.{" "}
+          {canStartReview
+            ? "Review it again to check it against the new wording."
+            : isOwner
+              ? "It's locked in its current state, so a reviewer will follow up."
+              : "Its creator has been asked to review it again."}
+        </p>
+      )}
 
       {error && (
         <p

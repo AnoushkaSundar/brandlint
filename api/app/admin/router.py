@@ -17,6 +17,7 @@ from app.admin.gaps import save_gaps
 from app.admin.rulebook import RulebookNotFound, rulebook_at
 from app.auth.dependencies import CurrentUser, SessionDep, current_user, require_roles
 from app.auth.models import User
+from app.content import rereview
 from app.contracts import Asset, AssetKind, Fact, Gap, Role, Rule, Term
 from app.memory import queries as memory
 
@@ -172,3 +173,24 @@ def post_approve(body: ApproveIn, user: Admin, session: SessionDep) -> dict:
     version = ingest.approve(session, body.rule_ids, user)
     session.commit()
     return {"version": version}
+
+
+class RereviewIn(edits.BaseModel):
+    content_ids: list[str]
+
+
+@router.post("/facts/{fact_id}/rereview")
+def post_rereview(
+    fact_id: str, body: RereviewIn, user: Admin, session: SessionDep
+) -> dict:
+    """Asks for another review of pieces that cite a fact. Only affected pieces."""
+    affected = {item["content_id"] for item in memory.impact(fact_id, session)}
+    outside = sorted(set(body.content_ids) - affected)
+    if not body.content_ids or outside:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "Choose pieces that cite this fact.",
+        )
+    queued = rereview.queue(session, fact_id, body.content_ids, user)
+    session.commit()
+    return {"queued": queued}
