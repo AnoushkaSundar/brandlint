@@ -44,6 +44,7 @@ services:
       UPLOAD_DIR: /uploads
     volumes:
       - ./demo:/demo:ro
+      - ./eval:/eval:ro
       - uploads:/uploads
     ports: ["8000:8000"]
     depends_on:

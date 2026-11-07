@@ -35,7 +35,7 @@ from app.contracts import (
 )
 from app.engine.agents.language import ClassifyFn
 from app.engine.cache import VerdictCache, cache_key
-from app.engine.checks.context import CheckContext
+from app.engine.checks.context import CheckContext, brand_rule
 from app.engine.chunking import ParsedChunk
 from app.engine.critic import Candidate
 from app.gateway.llm import POLICY_VERSION
@@ -445,11 +445,12 @@ def _verify(
         return unsupported()
 
     if fact.valid_until is not None and fact.valid_until < ctx.as_of:
-        # Cited by fact alone, so the critic dedupes this against the tier-0 check.
+        # Same citation as the tier-0 check, so the critic keeps one card, not two.
         return _candidate(
             unit, ctx, verdict=Verdict.VIOLATION,
             explanation=f"This relies on a fact that expired on {fact.valid_until}.",
             cited_text=fact.statement, model=model, fact=fact, candidates=ids,
+            rule=brand_rule(ctx, "valid-until"),
         )
 
     allowed = _numbers(f"{fact.statement} {fact.value}")

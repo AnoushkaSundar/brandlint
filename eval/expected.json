@@ -1,0 +1,28 @@
+{
+  "agency-blog": {
+    "planted": [
+      "R-CLAIM-01",
+      "R-CLAIM-02",
+      "R-CLAIM-05",
+      "R-TERM-01",
+      "R-TERM-02",
+      "R-TERM-03"
+    ],
+    "also_true": [
+      "R-CLAIM-03",
+      "R-TONE-04"
+    ]
+  },
+  "linkedin-post": {
+    "planted": [
+      "R-CLAIM-01",
+      "R-INT-01",
+      "R-REQ-01",
+      "R-TONE-03"
+    ],
+    "also_true": [
+      "R-CLAIM-03",
+      "R-TONE-02"
+    ]
+  }
+}
