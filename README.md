@@ -13,7 +13,7 @@ Design: [`docs/design.md`](docs/design.md) · Contracts: [`docs/contracts.md`](d
 
 ## Run it
 
-You need Docker with Compose. The stack uses about 4 GB of memory.
+You need Docker with Compose. The stack uses about 2 GB of memory once built.
 
 **1. Create your environment file**
 
