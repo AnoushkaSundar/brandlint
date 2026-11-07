@@ -63,6 +63,23 @@ def _chat_completion(body: dict[str, Any]) -> dict[str, Any]:
     return resp.json()
 
 
+def _parse_output(content: Any) -> Any:
+    """The model's JSON, even inside a code fence or followed by commentary, which
+    is how it answers when it has nothing to report. Anything else stays as text."""
+    try:
+        return json.loads(content)
+    except (json.JSONDecodeError, TypeError):
+        pass
+    text = str(content)
+    start = text.find("{")
+    if start >= 0:
+        try:
+            return json.JSONDecoder().raw_decode(text, start)[0]
+        except json.JSONDecodeError:
+            pass
+    return {"content": content}
+
+
 def call(
     purpose: str,
     data_class: str | DataClass,
@@ -128,10 +145,7 @@ def call(
             )
             if problem:
                 raise LeakBlocked(problem)
-        try:
-            parsed = json.loads(content)
-        except (json.JSONDecodeError, TypeError):
-            parsed = {"content": content}
+        parsed = _parse_output(content)
         return masking.unmask(parsed, masked.tokens) if masked else parsed
     except (PolicyBlocked, LeakBlocked) as exc:
         status = "blocked"

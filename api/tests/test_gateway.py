@@ -170,6 +170,48 @@ def test_the_tokens_a_reply_was_given_are_restored(monkeypatch, session):
     assert public_call(session) == {"a": "Bluewren"}
 
 
+@pytest.mark.parametrize(
+    "reply",
+    [
+        '{"a": 1}',
+        '```json\n{"a": 1}\n```',
+        '```json\n{"a": 1}\n```\n\nThere is nothing to check here.',
+        'Here you go: {"a": 1} and that is all.',
+    ],
+)
+def test_json_is_read_however_the_model_wraps_it(monkeypatch, session, reply):
+    monkeypatch.setattr(
+        llm,
+        "_chat_completion",
+        lambda body: {"model": "m", "choices": [{"message": {"content": reply}}]},
+    )
+    out = llm.call(
+        purpose="classify",
+        data_class="public",
+        rule_ids=[],
+        payload={"messages": [{"role": "user", "content": "x"}]},
+        session=session,
+    )
+    assert out == {"a": 1}
+
+
+@pytest.mark.parametrize("reply", ["sorry", "{broken", "a { b"])
+def test_a_reply_without_json_stays_as_text(monkeypatch, session, reply):
+    monkeypatch.setattr(
+        llm,
+        "_chat_completion",
+        lambda body: {"model": "m", "choices": [{"message": {"content": reply}}]},
+    )
+    out = llm.call(
+        purpose="classify",
+        data_class="public",
+        rule_ids=[],
+        payload={"messages": [{"role": "user", "content": "x"}]},
+        session=session,
+    )
+    assert out == {"content": reply}
+
+
 def test_session_is_required():
     with pytest.raises((TypeError, ValueError)):
         llm.call(
