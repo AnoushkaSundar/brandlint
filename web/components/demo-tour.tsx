@@ -3,6 +3,7 @@
 import { ArrowLeft, ArrowRight, Compass, Lightbulb, Minus, X } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 
 import { useAuth } from "@/components/auth-provider";
 import { Button } from "@/components/ui/button";
@@ -83,6 +84,7 @@ export function DemoTour() {
         <Compass aria-hidden="true" />
         Hide tour
       </Button>
+      {createPortal(
       <aside
         aria-label="Guided tour"
         className="fixed bottom-4 left-4 z-40 flex max-h-[calc(100svh-6rem)] w-[min(26rem,calc(100vw-2rem))] flex-col rounded-xl border bg-background text-sm shadow-xl"
@@ -194,7 +196,11 @@ export function DemoTour() {
             </Button>
           )}
         </div>
-      </aside>
+      </aside>,
+        // The card is rendered on the body, not inside the top bar. A blurred or
+        // transformed ancestor would otherwise become what "fixed" positions against.
+        document.body,
+      )}
     </>
   );
 }
