@@ -4,8 +4,9 @@ monkeypatched so no live LiteLLM is needed."""
 from __future__ import annotations
 
 import pytest
+from app.contracts import DataClass
 from app.db import Base
-from app.gateway import llm, masking
+from app.gateway import llm, masking, policy
 from app.gateway.models import GatewayLog
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
@@ -64,19 +65,109 @@ def test_public_call_returns_parsed_output_and_logs(monkeypatch, session):
     assert row.provider == "claude-haiku-5-5"
 
 
-def test_restricted_is_not_sent_out_and_logs_error(session):
-    with pytest.raises(NotImplementedError):
+def restricted(session):
+    return llm.call(
+        purpose="classify",
+        data_class="restricted",
+        rule_ids=[],
+        payload={"messages": [{"role": "user", "content": "secret"}]},
+        session=session,
+    )
+
+
+def test_restricted_stays_on_the_local_model(monkeypatch, session):
+    sent = {}
+
+    def transport(body):
+        sent.update(body)
+        return {"model": "llama", "choices": [{"message": {"content": "{}"}}]}
+
+    monkeypatch.setattr(llm, "_chat_completion", transport)
+    restricted(session)
+    assert sent["model"] == policy.LOCAL_MODEL
+    row = session.query(GatewayLog).one()
+    assert (row.route, row.status, row.model) == ("ollama", "ok", policy.LOCAL_MODEL)
+
+
+def test_restricted_never_falls_back_to_the_cloud(monkeypatch, session):
+    models = []
+
+    def down(body):
+        models.append(body["model"])
+        raise TimeoutError
+
+    monkeypatch.setattr(llm, "_chat_completion", down)
+    with pytest.raises(TimeoutError):
+        restricted(session)
+    assert models == [policy.LOCAL_MODEL]
+    assert session.query(GatewayLog).one().status == "error"
+
+
+def test_a_call_the_table_forbids_is_blocked_and_logged(monkeypatch, session):
+    monkeypatch.setattr(llm, "_chat_completion", None)
+    monkeypatch.setitem(
+        policy.TABLE,
+        (DataClass.public, policy.CLOUD, "classify"),
+        policy.Action.block,
+    )
+    with pytest.raises(llm.PolicyBlocked):
         llm.call(
             purpose="classify",
-            data_class="restricted",
+            data_class="public",
             rule_ids=[],
-            payload={"messages": [{"role": "user", "content": "secret"}]},
+            payload={"messages": [{"role": "user", "content": "x"}]},
             session=session,
         )
     row = session.query(GatewayLog).one()
-    assert row.route == "ollama"
-    assert row.status == "error"
-    assert row.provider is None
+    assert (row.route, row.status) == ("blocked", "blocked")
+
+
+def test_anything_without_a_row_is_blocked():
+    assert policy.decide(DataClass.public, "classify", "unknown") == policy.Action.block
+    assert policy.decide(DataClass.restricted, "classify") == policy.Action.block
+
+
+def test_a_review_of_restricted_data_uses_a_different_cache_key():
+    assert policy.model_for("restricted") != policy.model_for("public")
+
+
+def mask_codename(monkeypatch, reply):
+    monkeypatch.setattr(
+        masking, "deny_list", lambda bind: masking.DenyList(("Bluewren",), frozenset())
+    )
+    monkeypatch.setattr(
+        masking, "_token_for", lambda value, label, scope, bind: "[PRODUCT_1]"
+    )
+    monkeypatch.setattr(
+        llm,
+        "_chat_completion",
+        lambda body: {"model": "m", "choices": [{"message": {"content": reply}}]},
+    )
+
+
+def public_call(session):
+    return llm.call(
+        purpose="classify",
+        data_class="public",
+        rule_ids=[],
+        payload={"messages": [{"role": "user", "content": "Bluewren"}]},
+        session=session,
+    )
+
+
+@pytest.mark.parametrize("reply", ["see [PRODUCT_9]", "It's Bluewren", "it's bluewren."])
+def test_a_reply_holding_what_it_was_never_given_is_blocked(monkeypatch, session, reply):
+    mask_codename(monkeypatch, reply)
+    with pytest.raises(llm.LeakBlocked):
+        public_call(session)
+    row = session.query(GatewayLog).one()
+    assert row.status == "blocked"
+    assert "Bluewren" not in row.error
+
+
+def test_the_tokens_a_reply_was_given_are_restored(monkeypatch, session):
+    mask_codename(monkeypatch, '{"a": "[PRODUCT_1]"}')
+    assert public_call(session) == {"a": "Bluewren"}
 
 
 def test_session_is_required():
