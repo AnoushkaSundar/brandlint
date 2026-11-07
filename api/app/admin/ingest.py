@@ -14,9 +14,11 @@ from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.admin.brand import list_terms
 from app.admin.models import IngestJob
 from app.admin.models import Rule as RuleRow
 from app.auth.models import User
+from app.checks.visual.checks import LOGO_RULE, PALETTE_RULE
 from app.clients.gateway import llm_call
 from app.contracts import Rule, RuleStatus, RuleType, Severity
 from app.engine.parsers import parse
@@ -193,6 +195,27 @@ def numbered_clauses(text: str) -> dict[str, str]:
     return clauses
 
 
+# Wording the engine's code checks find their rule by, in app/engine/checks: the
+# codename check, the expired-fact check, and the hidden-text and injection checks.
+CODE_CHECK_WORDS = ("codename", "valid-until", "hidden text")
+CODE_CHECK_RULES = {LOGO_RULE, PALETTE_RULE}
+
+
+def checked_type(draft: "DraftIn", rule_id: str | None, term_rules: set[str]) -> RuleType:
+    """The type code can stand behind. The model's guess isn't trusted here: only the AI
+    judges `judgment` rules, so a rule wrongly marked `deterministic` with no code check
+    behind it would never be checked at all."""
+    if draft.type == RuleType.must_include:
+        return RuleType.must_include
+    lowered = draft.text.lower()
+    covered = (
+        rule_id in term_rules
+        or rule_id in CODE_CHECK_RULES
+        or any(word in lowered for word in CODE_CHECK_WORDS)
+    )
+    return RuleType.deterministic if covered else RuleType.judgment
+
+
 class ConflictReply(BaseModel):
     conflicts: list[ConflictIn] = Field(default_factory=list)
 
@@ -298,9 +321,14 @@ def ingest(session: Session, file_name: str, data: bytes, actor: User) -> Ingest
     version = next_version(session)
     latest = _latest_by_clause(session)
     codes = section_codes(text)
+    term_rules = {term.rule_id for term in list_terms(session) if term.rule_id}
     created: dict[str, str] = {}
     for draft in drafted:
         match = latest.get(draft.clause_ref)
+        likely_id = match.id if match else clause_id(draft.clause_ref, codes)
+        draft = draft.model_copy(
+            update={"type": checked_type(draft, likely_id, term_rules)}
+        )
         if (
             match is not None
             and match.status == RuleStatus.approved.value
