@@ -1,3 +1,4 @@
+from fastapi import HTTPException, status
 from mocks import engine as mock_engine
 from sqlalchemy.orm import Session
 
@@ -68,5 +69,21 @@ def request_fix(finding_id: str, attempt: int) -> FixSuggestion:
     """Asks the engine for a fix. The workflow stores it and enforces the two attempts."""
     if use_mock("ENGINE"):
         return FixSuggestion.model_validate(mock_engine.suggest_fix(finding_id, attempt))
-    # The real fixer lands in block 6.
-    raise NotImplementedError("The real engine isn't connected yet")
+
+    from app.engine import graph
+    from app.engine.agents import fixer
+
+    sessions = get_sessionmaker()
+    with sessions() as session:
+        try:
+            return fixer.request_fix(
+                finding_id,
+                attempt,
+                session,
+                fix_call=graph.gateway_fix(sessions),
+                classify=graph.gateway_classify(sessions),
+            )
+        except fixer.NoSafeFix:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_CONTENT, fixer.NO_SAFE_FIX
+            ) from None

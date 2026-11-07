@@ -4,10 +4,10 @@
 only in the LiteLLM proxy; here we talk to that proxy over plain HTTP (httpx),
 never a provider SDK, so the CI import guard stays satisfied.
 
-It routes by data class, masks what leaves, calls the pinned model through the
-proxy at temperature 0, restores tokens in the reply, and logs every call to
-`gateway_log`. Restricted data is refused until its local route lands in block 8.
-The policy engine and leak checks land in later blocks, as marked below.
+`policy.py` decides what each data class may do. This masks what leaves, calls
+the pinned model through the proxy at temperature 0, checks the reply for leaks,
+restores tokens in it, and logs every call to `gateway_log`. Restricted data
+stays on the local model group, and is refused if that isn't running.
 """
 
 from __future__ import annotations
@@ -22,27 +22,31 @@ from typing import Any
 import httpx
 
 from app.contracts import DataClass
-from app.gateway import masking
+from app.gateway import masking, policy
 from app.gateway.models import GatewayLog
+from app.gateway.policy import PINNED_MODEL, POLICY_VERSION
 
-# Pinned per review. The concrete model is pinned again in the LiteLLM config;
-# this is the logical name the proxy maps to a provider.
-PINNED_MODEL = os.getenv("LLM_MODEL", "claude-haiku-4-5")
+__all__ = ["PINNED_MODEL", "POLICY_VERSION", "LeakBlocked", "PolicyBlocked", "call"]
+
 LITELLM_URL = os.getenv("LITELLM_URL", "http://localhost:4000")
 LITELLM_KEY = os.getenv("LITELLM_MASTER_KEY", "")
 TIMEOUT_S = float(os.getenv("LLM_TIMEOUT_S", "30"))
-# Part of the verdict cache key. Bump it when routing or masking rules change.
-POLICY_VERSION = "policy-1"
 
 
-def _route(data_class: DataClass) -> str:
-    """Policy stub. Restricted data goes to the local model group ("ollama"),
-    which lands in block 8. Everything else goes out masked.
+class PolicyBlocked(Exception):
+    """The policy table doesn't allow this call."""
 
-    The full data-class x provider x purpose policy engine lands in block 7.
-    """
-    if data_class == DataClass.restricted:
+
+class LeakBlocked(Exception):
+    """The reply held something the model was never given."""
+
+
+def _route(data_class: DataClass, purpose: str, model: str) -> str:
+    if policy.stays_local(data_class, purpose):
         return "ollama"
+    provider = policy.provider_of(model)
+    if policy.decide(data_class, purpose, provider) == policy.Action.block:
+        return "blocked"
     return "litellm"
 
 
@@ -58,6 +62,23 @@ def _chat_completion(body: dict[str, Any]) -> dict[str, Any]:
     )
     resp.raise_for_status()
     return resp.json()
+
+
+def _parse_output(content: Any) -> Any:
+    """The model's JSON, even inside a code fence or followed by commentary, which
+    is how it answers when it has nothing to report. Anything else stays as text."""
+    try:
+        return json.loads(content)
+    except (json.JSONDecodeError, TypeError):
+        pass
+    text = str(content)
+    start = text.find("{")
+    if start >= 0:
+        try:
+            return json.JSONDecoder().raw_decode(text, start)[0]
+        except json.JSONDecodeError:
+            pass
+    return {"content": content}
 
 
 def call(
@@ -91,8 +112,8 @@ def call(
             "session is required: every gateway call must be logged to gateway_log"
         )
     dc = DataClass(data_class)
-    model = model or PINNED_MODEL
-    route = _route(dc)
+    route = _route(dc, purpose, model or PINNED_MODEL)
+    model = policy.LOCAL_MODEL if route == "ollama" else model or PINNED_MODEL
     started = time.perf_counter()
     status = "ok"
     provider: str | None = None
@@ -100,33 +121,37 @@ def call(
     masked: masking.Masked | None = None
 
     try:
-        if route != "litellm":
-            raise NotImplementedError(
-                f"{dc.value} data is not sent out (route={route}); the local route "
-                f"lands in block 8"
+        if route == "blocked":
+            raise PolicyBlocked(f"{dc.value} data may not be used for {purpose}")
+        if route == "litellm":
+            masked = masking.mask_messages(
+                payload["messages"],
+                data_class=dc,
+                # Without a review, tokens only need to last for this call.
+                scope=review_id or f"call-{uuid.uuid4()}",
+                bind=session.get_bind(),
             )
-        masked = masking.mask_messages(
-            payload["messages"],
-            data_class=dc,
-            # Without a review, tokens only need to last for this call.
-            scope=review_id or f"call-{uuid.uuid4()}",
-            bind=session.get_bind(),
-        )
         body = {
             "model": model,
             "temperature": 0,  # deterministic: tier-1 verdicts must be reproducible
-            "messages": masked.messages,
+            "messages": masked.messages if masked else payload["messages"],
         }
         raw = _chat_completion(body)
-        # (block 8) leak-check the response here.
         provider = raw.get("model")
         # Return the parsed model output, matching the mock's schema-shaped dict.
         content = raw["choices"][0]["message"]["content"]
-        try:
-            parsed = json.loads(content)
-        except (json.JSONDecodeError, TypeError):
-            parsed = {"content": content}
-        return masking.unmask(parsed, masked.tokens)
+        if masked:
+            problem = masking.leak(
+                content, masked.tokens, masking.deny_list(session.get_bind())
+            )
+            if problem:
+                raise LeakBlocked(problem)
+        parsed = _parse_output(content)
+        return masking.unmask(parsed, masked.tokens) if masked else parsed
+    except (PolicyBlocked, LeakBlocked) as exc:
+        status = "blocked"
+        error = f"{type(exc).__name__}: {exc}"
+        raise
     except Exception as exc:
         status = "error"
         error = f"{type(exc).__name__}: {exc}"
