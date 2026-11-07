@@ -1,5 +1,6 @@
 """The Visual agent, measured on the real demo banner and logo."""
 
+import base64
 import json
 from io import BytesIO
 from pathlib import Path
@@ -272,3 +273,36 @@ def test_findings_are_stable_between_runs():
     second = check_visual(BANNER, "public", ctx(), BRAND, passing, model=MODEL)
 
     assert [f.explanation for f in first] == [f.explanation for f in second]
+
+
+
+def test_a_damaged_logo_file_is_skipped():
+    brand = VisualBrand(PALETTE, [b"not an image", LOGO])
+
+    findings = check_logo(BANNER, ctx(), brand)
+
+    assert [finding.rule_id for finding in findings] == ["R-VIS-01"]
+
+
+def test_the_model_always_gets_a_png_it_can_take():
+    seen = []
+
+    def record(data_class, rule_ids, payload, review_id):
+        seen.append(payload["messages"][1]["content"][1]["image_url"]["url"])
+        return passing()
+
+    big = Image.new("RGB", (4000, 3000), (18, 52, 59))
+    buffer = BytesIO()
+    big.save(buffer, "JPEG")
+
+    check_imagery(buffer.getvalue(), "public", ctx(), record, model=MODEL)
+
+    assert seen[0].startswith("data:image/png;base64,")
+    sent = Image.open(BytesIO(base64.b64decode(seen[0].split(",", 1)[1])))
+    assert max(sent.size) <= 1568
+
+
+def test_a_pass_on_an_image_with_injected_text_goes_to_a_reviewer():
+    findings = check_imagery(BANNER, "public", ctx(), passing, model=MODEL, flagged=True)
+
+    assert [finding.verdict for finding in findings] == [Verdict.UNSURE]

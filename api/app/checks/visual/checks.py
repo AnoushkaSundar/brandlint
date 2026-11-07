@@ -50,6 +50,7 @@ SAMPLE_SIDE = 240
 MIN_MATCHES = 8
 MATCH_RATIO = 0.75
 ORB_FEATURES = 2000
+MODEL_IMAGE_SIDE = 1568
 # ORB copes with rotation and even scaling, not a one-way stretch, so the approved
 # logo is also tried at these widths. The width that fits best is the stretch.
 STRETCHES = (1.0, *(round(1 + step * 0.05, 2) for step in range(1, 21)),
@@ -239,10 +240,17 @@ def check_logo(data: bytes, ctx: CheckContext, brand: VisualBrand) -> list[Findi
         return []
     image = _bgr(data)
     matte = dominant_colours(data)[0][0]
-    matches = [find_logo(image, _bgr(logo, matte)) for logo in brand.logos]
-    match = next((found for found in matches if found), None)
-    if match is None:
+    matches = []
+    for logo in brand.logos:
+        try:
+            found = find_logo(image, _bgr(logo, matte))
+        except (OSError, ValueError, cv2.error):
+            continue  # A damaged logo file mustn't end the review.
+        if found:
+            matches.append(found)
+    if not matches:
         return []
+    match = max(matches, key=lambda found: found.inliers)
 
     problems = []
     if match.distortion > MAX_DISTORTION:
@@ -320,8 +328,17 @@ def _judgment_rules(ctx: CheckContext) -> list[Rule]:
     ]
 
 
+def _model_image(data: bytes) -> bytes:
+    """A PNG no larger than providers accept, so the media type is always true."""
+    image = Image.open(BytesIO(data)).convert("RGB")
+    image.thumbnail((MODEL_IMAGE_SIDE, MODEL_IMAGE_SIDE))
+    buffer = BytesIO()
+    image.save(buffer, "PNG")
+    return buffer.getvalue()
+
+
 def _payload(data: bytes, rule: Rule) -> dict[str, Any]:
-    encoded = base64.b64encode(data).decode("ascii")
+    encoded = base64.b64encode(_model_image(data)).decode("ascii")
     return {
         "messages": [
             {"role": "system", "content": _SYSTEM_PROMPT},
@@ -378,8 +395,13 @@ def check_imagery(
     classify: ClassifyFn,
     *,
     model: str,
+    flagged: bool = False,
 ) -> list[Finding]:
-    """Judgment rules. Anything but a clean PASS or VIOLATION reaches a reviewer."""
+    """Judgment rules. Anything but a clean PASS or VIOLATION reaches a reviewer.
+
+    `flagged` is true when an injection detector fired on the image's text, so a PASS
+    can't be trusted.
+    """
     findings = []
     for rule in _judgment_rules(ctx):
         try:
@@ -401,7 +423,15 @@ def check_imagery(
                 )
             )
             continue
-        if result.verdict is not Verdict.PASS:
+        if result.verdict is Verdict.PASS and flagged:
+            findings.append(
+                _judged(
+                    ctx, rule, Verdict.UNSURE, 0.0,
+                    "Passed, but an injection detector fired on this image's text.",
+                    model,
+                )
+            )
+        elif result.verdict is not Verdict.PASS:
             findings.append(
                 _judged(
                     ctx, rule, result.verdict, result.confidence,
@@ -419,11 +449,12 @@ def check_visual(
     classify: ClassifyFn,
     *,
     model: str,
+    flagged: bool = False,
 ) -> list[Finding]:
     """Every visual check. Text in the image is covered by the tier-0 terminology check,
     which already runs over the OCR chunk."""
     return [
         *check_logo(data, ctx, brand),
         *check_palette(data, ctx, brand),
-        *check_imagery(data, data_class, ctx, classify, model=model),
+        *check_imagery(data, data_class, ctx, classify, model=model, flagged=flagged),
     ]

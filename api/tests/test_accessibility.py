@@ -347,3 +347,44 @@ def test_faint_text_becomes_solid_for_ocr():
     assert mask.size == (120, 40)
     assert mask.getpixel((60, 20)) == 0
     assert mask.getpixel((2, 2)) == 255
+
+
+
+def test_an_unreadable_colour_is_skipped_not_guessed():
+    chunks = html_chunks('<p style="color:papayawhip;background-color:#ffffff">Hi</p>')
+
+    assert check_chunk_contrast(chunks, ctx()) == []
+
+
+def test_repeated_link_text_gets_two_findings():
+    html = '<p><a href="/a">here</a> and <a href="/b">here</a></p>'
+    findings = check_html(html, html_chunks(html), ctx())
+
+    assert len(findings) == 2
+    assert findings[0].spans[0].start != findings[1].spans[0].start
+
+
+def test_a_word_title_and_heading_one_are_normal():
+    data = docx_with([("Guide", "Title"), ("Start", "Heading 1"), ("Then", "Heading 2")])
+
+    assert check_docx(data, [], ctx()) == []
+
+
+def anti_aliased(text_colour, background=WHITE):
+    image = Image.new("RGB", (300, 80), background)
+    draw = ImageDraw.Draw(image)
+    blend = tuple((t + b) // 2 for t, b in zip(text_colour, background, strict=True))
+    draw.rectangle((20, 20, 200, 56), fill=blend)
+    draw.rectangle((24, 24, 196, 52), fill=text_colour)
+    draw.rectangle((40, 32, 180, 44), fill=background)
+    buffer = BytesIO()
+    image.save(buffer, "PNG")
+    return buffer.getvalue()
+
+
+def test_anti_aliased_edges_dont_drag_good_contrast_down():
+    findings = check_image_contrast(
+        anti_aliased((0x12, 0x34, 0x3B)), [], ctx(), ocr=fake_ocr
+    )
+
+    assert findings == []

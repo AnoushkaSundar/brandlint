@@ -47,6 +47,7 @@ BLACK: RGB = (0, 0, 0)
 WHITE: RGB = (255, 255, 255)
 LARGE_TEXT_PX = 24
 MIN_OCR_CONFIDENCE = 40
+TEXT_PERCENTILE = 80
 OCR_SCALE = 2
 MASK_DISTANCE = 20
 
@@ -94,11 +95,19 @@ def _finding(
     )
 
 
-def _span_of(text: str, chunks: Sequence[ParsedChunk]) -> list[dict]:
+def _span_of(
+    text: str, chunks: Sequence[ParsedChunk], taken: set | None = None
+) -> list[dict]:
+    """The first occurrence not already used, so repeated text gets its own span."""
     for chunk in chunks:
         start = chunk.text.find(text)
-        if start >= 0:
-            return [{"chunk_id": chunk.id, "start": start, "end": start + len(text)}]
+        while start >= 0:
+            key = (chunk.id, start)
+            if taken is None or key not in taken:
+                if taken is not None:
+                    taken.add(key)
+                return [{"chunk_id": chunk.id, "start": start, "end": start + len(text)}]
+            start = chunk.text.find(text, start + 1)
     return []
 
 
@@ -160,12 +169,15 @@ def check_chunk_contrast(
         style = chunk.style or {}
         if not chunk.text.strip() or not _is_visible(style):
             continue
-        foreground = parse_colour(style.get("color"))
-        background = parse_colour(style.get("background"))
-        if foreground is None and background is None:
+        raw_fg, raw_bg = style.get("color"), style.get("background")
+        if not raw_fg and not raw_bg:
             continue
-        foreground = foreground or BLACK
-        background = background or WHITE
+        # Unset means the browser default. Set but unreadable means we don't know,
+        # and an invented pair would give a false finding.
+        foreground = parse_colour(raw_fg) if raw_fg else BLACK
+        background = parse_colour(raw_bg) if raw_bg else WHITE
+        if foreground is None or background is None:
+            continue
         if foreground == background:
             continue
         found = _contrast_finding(
@@ -219,6 +231,7 @@ def _heading_findings(
     ctx: CheckContext, headings: Sequence[Heading], chunks: Sequence[ParsedChunk]
 ) -> list[Finding]:
     findings = []
+    taken: set = set()
     firsts = [heading for heading in headings if heading.level == 1]
     for extra in firsts[1:]:
         findings.append(
@@ -228,7 +241,7 @@ def _heading_findings(
                 Severity.low,
                 f'There is more than one top-level heading: "{extra.text}".',
                 f"h1:{extra.text}",
-                _span_of(extra.text, chunks),
+                _span_of(extra.text, chunks, taken),
             )
         )
     for previous, current in itertools.pairwise(headings):
@@ -241,7 +254,7 @@ def _heading_findings(
                     f'The heading "{current.text}" skips from level '
                     f"{previous.level} to level {current.level}.",
                     f"skip:{current.text}",
-                    _span_of(current.text, chunks),
+                    _span_of(current.text, chunks, taken),
                 )
             )
     return findings
@@ -251,6 +264,7 @@ def _link_findings(
     ctx: CheckContext, links: Sequence[str], chunks: Sequence[ParsedChunk]
 ) -> list[Finding]:
     findings = []
+    taken: set = set()
     for index, text in enumerate(links):
         label = " ".join(text.split())
         if label.lower().strip(".!?:") in _VAGUE_LINKS:
@@ -266,7 +280,7 @@ def _link_findings(
                 Severity.low,
                 f'The link text "{label}" {problem}.',
                 f"link-{index}",
-                _span_of(label, chunks),
+                _span_of(label, chunks, taken),
             )
         )
     return findings
@@ -311,8 +325,8 @@ def check_docx(
     for paragraph in document.paragraphs:
         style = paragraph.style.name if paragraph.style else ""
         match = _HEADING_STYLE.match(style or "")
-        level = 1 if style == "Title" else int(match.group(1)) if match else None
-        if level and paragraph.text.strip():
+        level = 0 if style == "Title" else int(match.group(1)) if match else None
+        if level is not None and paragraph.text.strip():
             headings.append(Heading(level, paragraph.text.strip()))
 
     links = [
@@ -401,8 +415,16 @@ def _box_colours(pixels: Any) -> tuple[RGB, RGB]:
     cv2.setRNGSeed(0)
     _, labels, centres = cv2.kmeans(samples, 2, None, criteria, 3, cv2.KMEANS_PP_CENTERS)
     counts = np.bincount(labels.flatten(), minlength=2)
-    background = centres[int(np.argmax(counts))]
-    foreground = centres[int(np.argmin(counts))]
+    background_label = int(np.argmax(counts))
+    background = centres[background_label]
+    text_pixels = samples[labels.flatten() != background_label]
+    if len(text_pixels) == 0:
+        foreground = centres[int(np.argmin(counts))]
+    else:
+        # Edge pixels blend into the background, so only the most distinct count.
+        distance = np.linalg.norm(text_pixels - background, axis=1)
+        strongest = text_pixels[distance >= np.percentile(distance, TEXT_PERCENTILE)]
+        foreground = np.median(strongest, axis=0)
     as_rgb = lambda centre: tuple(round(float(value)) for value in centre)
     return as_rgb(foreground), as_rgb(background)
 
