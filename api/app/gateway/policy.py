@@ -18,14 +18,18 @@ from enum import StrEnum
 from app.contracts import DataClass
 
 # Part of the verdict cache key. Bump it when this table or masking changes.
-POLICY_VERSION = "policy-2"
+POLICY_VERSION = "policy-3"
 
 PINNED_MODEL = os.getenv("LLM_MODEL", "claude-haiku-4-5")
 LOCAL_MODEL = os.getenv("LOCAL_LLM_MODEL", "local-small")
+# The second voter on claims. It's on Google's free tier, where submitted data may be
+# used to improve their products, so only public data may reach it.
+SECOND_MODEL = os.getenv("SECOND_LLM_MODEL", "gemini-3.5-flash-lite")
 
 ANY = "*"
 CLOUD = "cloud"
 LOCAL = "local"
+FREE_TIER = "free-tier"
 
 
 class Action(StrEnum):
@@ -37,6 +41,7 @@ class Action(StrEnum):
 
 TABLE: dict[tuple[DataClass, str, str], Action] = {
     (DataClass.public, CLOUD, ANY): Action.allow,
+    (DataClass.public, FREE_TIER, ANY): Action.allow,
     (DataClass.internal, CLOUD, ANY): Action.mask,
     (DataClass.confidential, CLOUD, ANY): Action.mask,
     (DataClass.restricted, CLOUD, ANY): Action.block,
@@ -49,6 +54,14 @@ def decide(data_class: DataClass, purpose: str, provider: str = CLOUD) -> Action
         if key in TABLE:
             return TABLE[key]
     return Action.block
+
+
+def provider_of(model: str) -> str:
+    return FREE_TIER if model == SECOND_MODEL else CLOUD
+
+
+def may_use_second_model(data_class: DataClass) -> bool:
+    return decide(data_class, ANY, FREE_TIER) != Action.block
 
 
 def stays_local(data_class: DataClass, purpose: str = ANY) -> bool:

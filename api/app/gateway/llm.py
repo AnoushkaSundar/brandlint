@@ -41,10 +41,11 @@ class LeakBlocked(Exception):
     """The reply held something the model was never given."""
 
 
-def _route(data_class: DataClass, purpose: str) -> str:
+def _route(data_class: DataClass, purpose: str, model: str) -> str:
     if policy.stays_local(data_class, purpose):
         return "ollama"
-    if policy.decide(data_class, purpose) == policy.Action.block:
+    provider = policy.provider_of(model)
+    if policy.decide(data_class, purpose, provider) == policy.Action.block:
         return "blocked"
     return "litellm"
 
@@ -111,7 +112,7 @@ def call(
             "session is required: every gateway call must be logged to gateway_log"
         )
     dc = DataClass(data_class)
-    route = _route(dc, purpose)
+    route = _route(dc, purpose, model or PINNED_MODEL)
     model = policy.LOCAL_MODEL if route == "ollama" else model or PINNED_MODEL
     started = time.perf_counter()
     status = "ok"

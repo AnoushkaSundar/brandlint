@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.clients.gateway import llm_call
 from app.contracts import Finding, Gap
-from app.engine import critic
+from app.engine import critic, voting
 from app.engine.agents import claims as claims_agent
 from app.engine.agents import document as document_pass
 from app.engine.agents import language
@@ -55,7 +55,9 @@ class ReviewState(TypedDict, total=False):
     gaps: list[Gap]
 
 
-def gateway_classify(session_factory: Callable[[], Session]) -> ClassifyFn:
+def gateway_classify(
+    session_factory: Callable[[], Session], model: str | None = None
+) -> ClassifyFn:
     """A thread-safe classify: each call gets its own session for gateway_log."""
 
     def classify(
@@ -73,6 +75,7 @@ def gateway_classify(session_factory: Callable[[], Session]) -> ClassifyFn:
                     payload,
                     session=session,
                     review_id=review_id,
+                    model=model,
                 )
             finally:
                 # A failed call must stay in the log too.
@@ -134,6 +137,7 @@ def build_review_graph(
     model: str = PINNED_MODEL,
     cache: VerdictCache | None = None,
     claim_sink: claims_agent.ClaimSink | None = None,
+    second: ClassifyFn | None = None,
 ) -> Any:
     def tier0(state: ReviewState) -> dict:
         found = run_tier0(state["chunks"], state["ctx"], state["fmt"])
@@ -148,6 +152,10 @@ def build_review_graph(
             flagged=flagged_chunk_ids(chunks, ctx),
             model=model,
             cache=cache,
+        )
+        voting.apply(
+            found, chunks, ctx, classify, second=second,
+            flagged=flagged_chunk_ids(chunks, ctx), model=model, cache=cache,
         )
         return {"candidates": found}
 
@@ -167,6 +175,10 @@ def build_review_graph(
             model=model,
             cache=cache,
             rules=claims_agent.claim_rules(ctx.rules, ctx.channel),
+        )
+        voting.apply(
+            judged, chunks, ctx, classify, second=second, flagged=flagged, model=model,
+            cache=cache,
         )
         return {"candidates": [*found, *judged]}
 
@@ -220,13 +232,15 @@ def run_review(
     cache: VerdictCache | None = None,
     manifests: dict[str, dict] | None = None,
     claim_sink: claims_agent.ClaimSink | None = None,
+    second: ClassifyFn | None = None,
 ) -> tuple[list[Finding], list[Gap]]:
     """Runs the graph. `on_finding` gets each finding once, as soon as its track
     finishes, so code findings don't wait for the model. Tier 0 always goes first:
     a fast model's findings wait until the code checks have reported. Every one
     has passed the critic. The returned list is the final word."""
     graph = build_review_graph(
-        classify, gap_sink=gap_sink, model=model, cache=cache, claim_sink=claim_sink
+        classify, gap_sink=gap_sink, model=model, cache=cache, claim_sink=claim_sink,
+        second=second,
     )
     known_facts = {fact.id for fact in ctx.facts}
     collected: list[Candidate] = []

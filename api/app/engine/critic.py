@@ -26,6 +26,7 @@ from app.contracts import (
     TraceStep,
     UnitType,
     Verdict,
+    Vote,
 )
 
 # Multiplied into an AI finding's confidence when specialists conflict.
@@ -64,6 +65,7 @@ class Candidate:
     fix_available: bool = False
     # Set when the candidate came from an already-built tier-0 finding.
     finding_id: str | None = None
+    vote: Vote | None = None
     # The inputs Replay needs. Never shown to a user.
     manifest: dict = field(default_factory=dict)
 
@@ -95,6 +97,7 @@ class Candidate:
             models_used=list(finding.models_used),
             fix_available=finding.fix_available,
             finding_id=finding.id,
+            vote=finding.vote,
         )
 
     def stable_id(self) -> str:
@@ -253,6 +256,7 @@ def _to_finding(candidate: Candidate) -> Finding:
         ai_generated=candidate.ai_generated,
         models_used=candidate.models_used,
         fix_available=candidate.fix_available,
+        vote=candidate.vote,
         status=FindingStatus.open,
     )
 

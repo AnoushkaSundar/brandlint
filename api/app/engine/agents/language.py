@@ -26,7 +26,13 @@ from app.contracts import (
     TraceStep,
     Verdict,
 )
-from app.engine.agents.anchors import ANCHORS, ANCHORS_VERSION
+from app.engine.agents.anchors import (
+    ANCHORS,
+    ANCHORS_VERSION,
+    RUBRICS,
+    VOTE_ANCHORS,
+    VOTE_VERSION,
+)
 from app.engine.cache import VerdictCache, cache_key
 from app.engine.checks.context import CheckContext
 from app.engine.chunking import ParsedChunk
@@ -110,18 +116,24 @@ def control_for(chunk: ParsedChunk) -> tuple[str, str] | None:
 
 
 def build_payload(
-    chunk: ParsedChunk, rule: Rule, channel: str, question: str
+    chunk: ParsedChunk, rule: Rule, channel: str, question: str, variant: int = 0
 ) -> dict[str, Any]:
     # Derived from the text itself, so content can't forge its own closing marker
     # and the same chunk always yields the same prompt.
     marker = f"MATERIAL-{hashlib.sha256(chunk.text.encode()).hexdigest()[:16]}"
-    examples = "\n".join(
-        f'- {a["verdict"]}: "{a["text"]}" ({a["why"]})'
-        for a in ANCHORS.get(rule.id, [])
+    anchors = (
+        VOTE_ANCHORS.get(rule.id, {}).get(variant, [])
+        if variant
+        else ANCHORS.get(rule.id, [])
     )
+    examples = "\n".join(
+        f'- {a["verdict"]}: "{a["text"]}" ({a["why"]})' for a in anchors
+    )
+    rubric = [f"How to judge: {RUBRICS[variant]}"] if variant else []
     user = "\n".join(
         [
             f"Rule {rule.id} ({rule.clause_ref}): {rule.text}",
+            *rubric,
             f"Channel: {channel}",
             f"Examples:\n{examples}" if examples else "Examples: none",
             f"Control question: {question}",
@@ -219,8 +231,12 @@ def judge(
     flagged: Collection[str],
     model: str,
     cache: VerdictCache | None = None,
+    variant: int = 0,
 ) -> Candidate | None:
-    """Judge one chunk x rule. Returns None only for a clean PASS."""
+    """Judge one chunk x rule. Returns None only for a clean PASS.
+
+    `variant` picks a voting rubric. 0 is the ordinary check.
+    """
     control = control_for(chunk)
     if control is None:
         return None
@@ -248,8 +264,9 @@ def judge(
             manifest,
         )
 
+    prompt_version = f"{PROMPT_VERSION}+{VOTE_VERSION}.{variant}" if variant else PROMPT_VERSION
     key = cache_key(
-        chunk.text, ctx.channel, f"{rule.id}@{rule.version}", PROMPT_VERSION, model,
+        chunk.text, ctx.channel, f"{rule.id}@{rule.version}", prompt_version, model,
         POLICY_VERSION,
     )
     facts = {fact.id: fact.version for fact in ctx.facts}
@@ -261,7 +278,7 @@ def judge(
         except ValidationError:
             result = None  # A stale row is a miss, not a failure.
     if result is None:
-        payload = build_payload(chunk, rule, ctx.channel, question)
+        payload = build_payload(chunk, rule, ctx.channel, question, variant)
         try:
             raw = classify(chunk.data_class, [rule.id], payload, ctx.review_id)
         except Exception as exc:  # noqa: BLE001 - any failure must fail closed

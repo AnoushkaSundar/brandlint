@@ -13,7 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.contracts import Rule, Span, Verdict
-from app.engine import models
+from app.engine import models, voting
 from app.engine.agents import claims, document, language
 from app.engine.agents.language import ClassifyFn
 from app.engine.brand import load_brand
@@ -46,7 +46,11 @@ def _spans(spans: list) -> list[dict]:
 
 
 def _replay_language(
-    finding: models.Finding, manifest: dict, session: Session, classify: ClassifyFn
+    finding: models.Finding,
+    manifest: dict,
+    session: Session,
+    classify: ClassifyFn,
+    second: ClassifyFn | None,
 ) -> tuple[str, list[dict]]:
     row = session.get(models.Chunk, manifest["chunk_id"])
     if row is None or row.content_hash != manifest["content_hash"]:
@@ -57,16 +61,19 @@ def _replay_language(
         content_version_id=finding.content_version_id,
         channel=manifest["channel"],
     )
+    rule = Rule.model_validate(manifest["rule"])
+    flagged = {chunk.id} if manifest["flagged"] else ()
     candidate = language.judge(
-        chunk,
-        Rule.model_validate(manifest["rule"]),
-        ctx,
-        classify,
-        flagged={chunk.id} if manifest["flagged"] else (),
-        model=manifest["model"],
+        chunk, rule, ctx, classify, flagged=flagged, model=manifest["model"]
     )
     if candidate is None:
         return Verdict.PASS.value, []
+    if manifest.get("voted") and candidate.verdict == Verdict.VIOLATION:
+        # A stored verdict may be the vote's, so the vote has to run again too.
+        voting.settle(
+            candidate, chunk, rule, ctx, classify, second=second, flagged=flagged,
+            model=manifest["model"],
+        )
     return candidate.verdict.value, _spans(candidate.spans)
 
 
@@ -146,7 +153,12 @@ def _replay_code(
     return Verdict.PASS.value, []
 
 
-def replay(finding_id: str, session: Session, classify: ClassifyFn) -> dict | None:
+def replay(
+    finding_id: str,
+    session: Session,
+    classify: ClassifyFn,
+    second: ClassifyFn | None = None,
+) -> dict | None:
     """{identical, verdict, manifest}, or None if there is no such finding."""
     finding = session.get(models.Finding, finding_id)
     if finding is None:
@@ -156,7 +168,7 @@ def replay(finding_id: str, session: Session, classify: ClassifyFn) -> dict | No
         raise NotReplayable("This verdict has no stored inputs.")
 
     if manifest.get("kind") == "language":
-        verdict, spans = _replay_language(finding, manifest, session, classify)
+        verdict, spans = _replay_language(finding, manifest, session, classify, second)
     elif manifest.get("kind") == "document":
         verdict, spans = _replay_document(finding, manifest, session, classify)
     elif manifest.get("kind") == "claim":
