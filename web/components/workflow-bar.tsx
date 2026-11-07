@@ -129,6 +129,12 @@ export function WorkflowBar({
       </p>
       {waiting && <p>{waiting}</p>}
       {board.can_restart && <Restart onRestart={onRestart} />}
+      {board.hidden_overridden && (
+        <p className="border-l-2 border-destructive pl-2">
+          A reviewer let hidden text through. It&apos;s still in the content,
+          so check it before approving.
+        </p>
+      )}
       {board.legal_required && (
         <p>A high-severity claim means legal must sign this off.</p>
       )}

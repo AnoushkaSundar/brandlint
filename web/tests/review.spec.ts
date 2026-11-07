@@ -101,6 +101,7 @@ function boardFor(findings: readonly Finding[] = FINDINGS): Board {
     state: "resolving",
     legal_required: false,
     can_restart: false,
+    hidden_overridden: false,
     findings: findings.map((finding) => ({
       id: finding.id,
       status: "open",
@@ -1696,11 +1697,40 @@ test.describe("moving content through the workflow", () => {
     await page.goto("/content/c1/review");
     await expect(bar(page)).toContainText("didn't finish");
 
-    await stubReview(page);
+    // The new run has its own id, so findings from the failed one can't reappear.
+    const NEW_ID = "rev-demo-new";
+    let oldOpens = 0;
+    await page.route(`**/stub-api/engine/reviews/${ENGINE_ID}/findings`, (route) => {
+      oldOpens += 1;
+      return route.abort();
+    });
+    await stubReview(page, {
+      content: {
+        ...CONTENT,
+        latest_review: { ...CONTENT.latest_review, engine_review_id: NEW_ID },
+      },
+    });
+    await page.route(`**/stub-api/engine/reviews/${NEW_ID}/chunks`, (route) =>
+      route.fulfill({ json: CHUNKS }),
+    );
+    await page.route(`**/stub-api/engine/reviews/${NEW_ID}/findings`, (route) =>
+      route.fulfill({ contentType: "text/event-stream", body: stream(FINDINGS) }),
+    );
     await bar(page).getByRole("button", { name: "Start review again" }).click();
 
     await expect(findingCards(page)).toHaveCount(FINDINGS.length);
     expect(starts).toBe(1);
+    expect(oldOpens).toBe(0);
+  });
+
+  test("manager and legal are warned about hidden text a reviewer let through", async ({
+    page,
+  }) => {
+    await stubReview(page);
+    await stubBoard(page, { ...boardFor(), state: "manager_approval", hidden_overridden: true });
+    await page.goto("/content/c1/review");
+
+    await expect(bar(page)).toContainText("A reviewer let hidden text through");
   });
 
   test("a refused restart says why", async ({ page }) => {

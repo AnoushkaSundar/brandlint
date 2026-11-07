@@ -13,14 +13,16 @@ from app.auth.dependencies import (
 )
 from app.auth.models import User
 from app.clients import engine as engine_client
-from app.content.access import latest_review, readable_content
+from app.content.access import can_start_again, latest_review, readable_content
 from app.content.models import Content, ContentVersion
 from app.content.schemas import ContentOut
 from app.contracts import (
+    CheckType,
     ContentState,
     Decision,
     DecisionAction,
     Finding,
+    FindingStatus,
     FixSuggestion,
     Role,
 )
@@ -80,10 +82,18 @@ def _facts(session: Session, content: Content, review: Review | None) -> ReviewF
 
 def _can_restart(content: Content, user: User, facts: ReviewFacts) -> bool:
     """A run that ended without finishing can only be started again by its creator."""
-    return (
-        content.state == ContentState.ai_review.value
-        and content.creator_id == user.id
-        and facts.run_status in ("failed", "unknown")
+    return content.creator_id == user.id and can_start_again(
+        content.state, facts.run_status
+    )
+
+
+def _hidden_overridden(facts: ReviewFacts) -> bool:
+    """Hidden text a reviewer let through, which manager and legal should know about."""
+    let_through = {FindingStatus.override_confirmed, FindingStatus.resolved}
+    return any(
+        finding.check is CheckType.hidden_content
+        and facts.progress.get(finding.id, FindingProgress()).status in let_through
+        for finding in facts.findings
     )
 
 
@@ -109,6 +119,7 @@ def _board(session: Session, content: Content, user: User) -> Board:
         state=ContentState(content.state),
         legal_required=needs_legal(facts.findings),
         can_restart=_can_restart(content, user, facts),
+        hidden_overridden=_hidden_overridden(facts),
         findings=standings,
         moves=[
             MoveOut(to=m.to, needs_reason=m.needs_reason, blocked_by=m.blocked_by)
@@ -191,15 +202,14 @@ def decide(
 
 
 def _fixed_text(review: Review, facts: ReviewFacts) -> str | None:
-    """The clean text with every approved fix in place, or None if nothing changes.
+    """The text with every accepted fix in place, or None when nobody accepted one.
 
-    Overriding a hidden-text finding doesn't remove the text, so it's cleaned here
-    whether or not any fix was accepted.
+    Text is only ever rewritten because a person decided to. Overridden hidden text
+    is shown to manager and legal as a notice instead.
     """
-    chunks = engine_client.list_chunks(review.engine_review_id)
-    has_fix = any(item.fix_text is not None for item in facts.progress.values())
-    if not has_fix and not fixes.has_hidden_text(chunks):
+    if all(item.fix_text is None for item in facts.progress.values()):
         return None
+    chunks = engine_client.list_chunks(review.engine_review_id)
     return fixes.text_with_fixes(chunks, facts.findings, facts.progress)
 
 

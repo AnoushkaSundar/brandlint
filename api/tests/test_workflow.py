@@ -1028,11 +1028,6 @@ def test_visible_styling_keeps_the_text():
     assert text == "Hello"
 
 
-def test_zero_width_characters_go_but_the_sentence_stays():
-    text = text_with_fixes([chunk("c1", 0, "Hel\u200blo there")], [], {})
-
-    assert text == "Hello there"
-
 
 @pytest.mark.parametrize("kind", ["image", "hidden"])
 def test_a_fix_on_text_nobody_reads_is_never_dropped_silently(kind):
@@ -1230,53 +1225,7 @@ def linkedin(client):
     return content_id
 
 
-def test_overriding_hidden_text_still_keeps_it_out_of_the_version(client_for, session):
-    creator = client_for()
-    reviewer = client_for(Role.reviewer, "lena")
-    content_id = linkedin(creator)
-    for item in board(reviewer, content_id)["findings"]:
-        decide(reviewer, content_id, item["id"], "override", "Checked the source")
-    move(creator, content_id, "reviewer_check")
 
-    move(reviewer, content_id, "manager_approval")
-
-    latest = versions_of(session, content_id)[-1]
-    assert latest.version == 2
-    assert latest.fixes_applied is True
-    assert "AI reviewer" not in latest.text
-
-
-def test_zero_width_characters_alone_are_cleaned(client_for, session, monkeypatch, no_findings):
-    creator = client_for()
-    reviewer = client_for(Role.reviewer, "lena")
-    content_id = resolving(creator)
-    monkeypatch.setattr(
-        "app.clients.engine.list_chunks",
-        lambda review_id: [chunk("c1", 0, "Hel\u200blo")],
-    )
-    move(creator, content_id, "reviewer_check")
-
-    move(reviewer, content_id, "manager_approval")
-
-    assert versions_of(session, content_id)[-1].text == "Hello"
-
-
-def test_an_image_with_ocr_text_is_not_rewritten(client_for, session, monkeypatch, no_findings):
-    creator = client_for()
-    reviewer = client_for(Role.reviewer, "lena")
-    content_id = resolving(creator)
-    monkeypatch.setattr(
-        "app.clients.engine.list_chunks",
-        lambda review_id: [
-            chunk("c1", 0, "", "image"),
-            styled("c2", 1, "Words in the image", from_ocr=True),
-        ],
-    )
-    move(creator, content_id, "reviewer_check")
-
-    move(reviewer, content_id, "manager_approval")
-
-    assert len(versions_of(session, content_id)) == 1
 
 
 # Starting a failed review again
@@ -1317,3 +1266,42 @@ def test_only_the_creator_is_offered_a_restart(client_for, monkeypatch):
     run_status(monkeypatch, "failed")
 
     assert board(client_for(Role.reviewer, "lena"), content_id)["can_restart"] is False
+
+
+
+def test_zero_width_characters_are_left_for_emoji_and_scripts():
+    text = text_with_fixes([chunk("c1", 0, "a\u200db \u0915\u094d\u200d")], [], {})
+
+    assert text == "a\u200db \u0915\u094d\u200d"
+
+
+def test_overriding_hidden_text_makes_no_version_but_warns(client_for, session):
+    creator = client_for()
+    reviewer = client_for(Role.reviewer, "lena")
+    manager = client_for(Role.manager, "marcus")
+    content_id = linkedin(creator)
+    for item in board(reviewer, content_id)["findings"]:
+        decide(reviewer, content_id, item["id"], "override", "Checked the source")
+    move(creator, content_id, "reviewer_check")
+
+    move(reviewer, content_id, "manager_approval")
+
+    assert len(versions_of(session, content_id)) == 1
+    assert board(manager, content_id)["hidden_overridden"] is True
+
+
+def test_without_hidden_text_there_is_no_warning(client_for, no_findings):
+    creator = client_for()
+    content_id = resolving(creator)
+
+    assert board(creator, content_id)["hidden_overridden"] is False
+
+
+def test_a_finished_run_cannot_be_started_again(client_for):
+    creator = client_for()
+    content_id = started(creator)
+
+    response = creator.post(f"/content/{content_id}/reviews")
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "This review has already finished."

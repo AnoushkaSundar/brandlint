@@ -569,6 +569,7 @@ test.describe("comments", () => {
           state: "resolving",
           legal_required: false,
           can_restart: false,
+          hidden_overridden: false,
           findings: [],
           moves: [],
         },

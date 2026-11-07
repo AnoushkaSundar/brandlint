@@ -17,7 +17,6 @@ from app.workflow.models import FixOffer, Review
 MAX_FIX_ATTEMPTS = 2
 NO_SAFE_FIX = "No safe fix found; marked for review"
 HIDDEN_FONT_PT = 4
-_ZERO_WIDTH = dict.fromkeys(map(ord, "\u200b\u200c\u200d\u2060\ufeff"))
 
 
 class HasFixText(Protocol):
@@ -87,8 +86,7 @@ def offer_fix(
 def is_readable(chunk: Chunk) -> bool:
     """Whether a person reads this as copy. Matches the engine's hidden check.
 
-    Zero-width characters aren't here: they sit inside visible sentences, so
-    only the characters are removed, not the chunk.
+    Zero-width characters aren't here: emoji and several scripts need them.
     """
     style = chunk.style or {}
     color, background = style.get("color"), style.get("background")
@@ -102,19 +100,6 @@ def is_readable(chunk: Chunk) -> bool:
         or (color and background and color.lower() == background.lower())
         or (font_pt is not None and font_pt < HIDDEN_FONT_PT)
     )
-
-
-def has_hidden_text(chunks: Sequence[Chunk]) -> bool:
-    """Whether the text needs cleaning, fixes or not.
-
-    Images and their OCR text were never part of the copy, so they don't count.
-    """
-    for chunk in chunks:
-        if chunk.kind == "image" or (chunk.style or {}).get("from_ocr"):
-            continue
-        if not is_readable(chunk) or chunk.text != chunk.text.translate(_ZERO_WIDTH):
-            return True
-    return False
 
 
 def fix_span(finding: Finding) -> Span | None:
@@ -178,7 +163,7 @@ def text_with_fixes(
                 raise FixesOverlap(chunk.id)
             text = text[:start] + fix_text + text[end:]
             limit = start
-        parts.append(text.translate(_ZERO_WIDTH))
+        parts.append(text)
     return "\n\n".join([*parts, *additions])
 
 

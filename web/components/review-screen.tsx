@@ -38,6 +38,7 @@ type StreamState = "streaming" | "done" | "error";
 
 const BOARD_POLL_MS = 2000;
 const MAX_STREAM_RETRIES = 3;
+const RETRY_DELAY_MS = 1000;
 
 function findingCount(count: number): string {
   return count === 1 ? "1 finding" : `${count} findings`;
@@ -101,7 +102,7 @@ function Findings({
           role="alert"
           className="mt-3 rounded-lg border border-destructive p-3 text-sm text-destructive"
         >
-          The review stopped before it finished. Reload the page to try again.
+          The review stopped before it finished.
         </p>
       )}
 
@@ -143,6 +144,8 @@ export function ReviewScreen({ id }: { id: string }) {
     new Map(),
   );
   const [board, setBoard] = useState<Board | null>(null);
+  // Every board write takes a ticket, so a slow read can't undo a newer change.
+  const boardTicket = useRef(0);
   const [comments, setComments] = useState<Comment[]>([]);
   const leftAiReview = useRef(false);
   const [streamAttempt, setStreamAttempt] = useState(0);
@@ -220,7 +223,12 @@ export function ReviewScreen({ id }: { id: string }) {
             ? existing
             : [...existing, finding],
         ),
-      onDone: () => setStreamState("done"),
+      onDone: () => {
+        // A good reconnect starts the count again and clears what went wrong before.
+        streamRetries.current = 0;
+        setError(null);
+        setStreamState("done");
+      },
       onError: () => setStreamState("error"),
     });
 
@@ -232,23 +240,28 @@ export function ReviewScreen({ id }: { id: string }) {
 
   useEffect(() => {
     // The stream replays from the start, so reopening it fills in what was missed.
+    // A board that couldn't load doesn't stop this: the outage may have hit both.
     const retry =
       streamState === "error" &&
-      board !== null &&
-      !board.can_restart &&
+      !board?.can_restart &&
       streamRetries.current < MAX_STREAM_RETRIES;
     if (!retry) return;
     streamRetries.current += 1;
-    setStreamState("streaming");
-    setStreamAttempt((attempt) => attempt + 1);
+    const timer = setTimeout(() => {
+      setStreamState("streaming");
+      setStreamAttempt((attempt) => attempt + 1);
+    }, RETRY_DELAY_MS * streamRetries.current);
+    return () => clearTimeout(timer);
   }, [streamState, board]);
+
 
   useEffect(() => {
     if (streamState === "streaming") return;
     let current = true;
+    const ticket = boardTicket.current;
     getBoard(id).then(
       (loaded) => {
-        if (current) setBoard(loaded);
+        if (current && ticket === boardTicket.current) setBoard(loaded);
       },
       (caught: ApiError) => {
         if (current) setError(caught.message);
@@ -267,7 +280,7 @@ export function ReviewScreen({ id }: { id: string }) {
       );
     if (!canLeave || leftAiReview.current) return;
     leftAiReview.current = true;
-    moveContent(id, "resolving").then(setBoard, (caught: ApiError) => {
+    moveContent(id, "resolving").then(takeBoard, (caught: ApiError) => {
       leftAiReview.current = false;
       setError(caught.message);
     });
@@ -283,7 +296,15 @@ export function ReviewScreen({ id }: { id: string }) {
       );
     if (!waiting) return;
     const timer = setTimeout(() => {
-      getBoard(id).then(setBoard, () => setBoard({ ...board }));
+      const ticket = boardTicket.current;
+      getBoard(id).then(
+        (loaded) => {
+          if (ticket === boardTicket.current) setBoard(loaded);
+        },
+        () => {
+          if (ticket === boardTicket.current) setBoard({ ...board });
+        },
+      );
     }, BOARD_POLL_MS);
     return () => clearTimeout(timer);
   }, [board, id]);
@@ -317,8 +338,13 @@ export function ReviewScreen({ id }: { id: string }) {
     [findings, standings],
   );
 
+  function takeBoard(next: Board | null) {
+    boardTicket.current += 1;
+    setBoard(next);
+  }
+
   async function decideFinding(findingId: string, input: DecisionInput) {
-    setBoard(await decide(id, findingId, input));
+    takeBoard(await decide(id, findingId, input));
   }
 
   async function comment(input: CommentInput) {
@@ -327,18 +353,21 @@ export function ReviewScreen({ id }: { id: string }) {
 
   async function restart() {
     await startReview(id);
+    // The new review id comes first, so the stream can't reopen the failed run.
+    const fresh = await getContent(id);
     leftAiReview.current = false;
     streamRetries.current = 0;
+    setError(null);
     setReceived([]);
     setChunks([]);
-    setBoard(null);
+    takeBoard(null);
+    setContent(fresh);
     setStreamState("streaming");
     setStreamAttempt((attempt) => attempt + 1);
-    setContent(await getContent(id));
   }
 
   async function move(to: ContentState, reason?: string) {
-    setBoard(await moveContent(id, to, reason));
+    takeBoard(await moveContent(id, to, reason));
   }
 
   const backLink = (
