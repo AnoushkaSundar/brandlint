@@ -99,6 +99,24 @@ def test_a_failed_call_or_another_review_is_not_disclosed(monkeypatch, session):
     assert disclosure.disclosure("rev", session)["models"] == []
 
 
+def test_a_model_whose_calls_all_failed_is_not_disclosed(monkeypatch, session):
+    """Otherwise step 9 claims the local model reviewed text it never answered."""
+    serve(monkeypatch)
+    log(session, policy.LOCAL_MODEL, status="error")
+    session.add(
+        engine_models.Finding(
+            id="f", review_id="rev", content_version_id="cv", unit_type="chunk",
+            spans=[], check="tone", tier=1, verdict="UNSURE", severity="medium",
+            confidence=0.0, rule_id="R", rule_version=1, fact_ids=[], cited_text="c",
+            explanation="e", trace={}, ai_generated=True,
+            models_used=[policy.LOCAL_MODEL],
+        )
+    )
+    session.commit()
+    assert disclosure.disclosure("rev", session)["models"] == []
+    assert disclosure.disclosure("rev", session)["routes"] == []
+
+
 def test_a_re_run_served_from_the_cache_still_discloses(monkeypatch, session):
     """No calls are logged for this review, but its verdicts came from a model."""
     serve(monkeypatch, chunk(TEXT))
