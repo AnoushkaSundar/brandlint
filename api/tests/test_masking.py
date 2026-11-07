@@ -206,7 +206,8 @@ def test_a_reply_cant_use_a_token_from_another_call(session, monkeypatch):
 
     monkeypatch.setattr(llm, "_chat_completion", transport)
     call(session, "Bluewren")
-    assert call(session, "Hello") == {"content": "It is [PRODUCT_1]"}
+    with pytest.raises(llm.LeakBlocked):
+        call(session, "Hello")
 
 
 def test_unmask_reaches_nested_output():

@@ -214,6 +214,21 @@ def mask_messages(
     return masked
 
 
+def leak(content: Any, tokens: Mapping[str, str], deny: DenyList) -> str | None:
+    """What's wrong with a reply, checked before its tokens are restored.
+
+    A model only ever saw tokens, so a protected value in the raw reply, or a token
+    it wasn't given, didn't come from what we sent. The reason never quotes the value.
+    """
+    text = str(content)
+    if any(token not in tokens for token in _TOKEN.findall(text)):
+        return "the reply holds a token this call didn't send"
+    for term in deny.terms:
+        if re.search(rf"(?<!\w){re.escape(term)}(?!\w)", text, re.IGNORECASE):
+            return "the reply holds a protected value"
+    return None
+
+
 def unmask(value: Any, tokens: Mapping[str, str]) -> Any:
     """Restores this call's tokens throughout the model's output. Tokens from
     other calls stay as they are, so a reply can't pull in values it wasn't given."""

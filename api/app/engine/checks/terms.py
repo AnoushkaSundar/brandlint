@@ -64,6 +64,7 @@ def check_terms(chunks: list[ParsedChunk], ctx: CheckContext) -> list[Finding]:
                 anchor=f"{chunk.id}:{start}:{end}",
                 spans=[{"chunk_id": chunk.id, "start": start, "end": end}],
                 rule=rule,
+                fix_available=True,
             )
         )
     return findings

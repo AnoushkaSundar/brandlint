@@ -15,11 +15,12 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 
 from app.admin.rulebook import rulebook_at
-from app.auth.dependencies import SessionDep, current_user, require_roles
+from app.auth.dependencies import CurrentUser, SessionDep, current_user, require_roles
 from app.clients.flags import use_mock
 from app.contracts import Chunk, Proposal, Role
 from app.db import get_sessionmaker
-from app.engine import evaluation, graph, replay, reviews
+from app.engine import evaluation, graph, models, replay, reviews
+from app.engine.access import require_review
 
 POLL_S = 0.05
 
@@ -50,7 +51,10 @@ def _review_routes() -> APIRouter:
     routes = APIRouter(dependencies=[Depends(current_user)])
 
     @routes.get("/reviews/{review_id}/findings")
-    def stream_findings(review_id: str, session: SessionDep) -> StreamingResponse:
+    def stream_findings(
+        review_id: str, user: CurrentUser, session: SessionDep
+    ) -> StreamingResponse:
+        require_review(review_id, user, session)
         run = reviews.get_run(review_id)
         if run is not None:
             body = _follow(run)
@@ -62,7 +66,10 @@ def _review_routes() -> APIRouter:
         return StreamingResponse(body, media_type="text/event-stream")
 
     @routes.get("/reviews/{review_id}/chunks", response_model=list[Chunk])
-    async def list_chunks(review_id: str) -> list[dict]:
+    async def list_chunks(
+        review_id: str, user: CurrentUser, session: SessionDep
+    ) -> list[dict]:
+        require_review(review_id, user, session)
         run = reviews.get_run(review_id)
         if run is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Review not found")
@@ -71,7 +78,11 @@ def _review_routes() -> APIRouter:
         return [chunk.as_dict() for chunk in run.chunks or []]
 
     @routes.post("/verdicts/{finding_id}/replay")
-    def replay_verdict(finding_id: str, session: SessionDep) -> dict:
+    def replay_verdict(finding_id: str, user: CurrentUser, session: SessionDep) -> dict:
+        finding = session.get(models.Finding, finding_id)
+        if finding is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Finding not found")
+        require_review(finding.review_id, user, session)
         classify = graph.gateway_classify(get_sessionmaker())
         try:
             result = replay.replay(finding_id, session, classify)
