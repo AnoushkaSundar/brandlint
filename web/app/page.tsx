@@ -149,7 +149,7 @@ export default function Home() {
                 href="/login"
                 className="inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-3 font-medium text-primary-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
               >
-                Try it as a creator
+                Start the demo
                 <ArrowRight aria-hidden="true" className="size-4" />
               </Link>
               <a
@@ -160,8 +160,8 @@ export default function Home() {
               </a>
             </div>
             <p className="mt-4 text-sm text-muted-foreground">
-              No sign-up. Pick a role and the built-in guide walks you through
-              the workflow.
+              No sign-up. A guided tour shows you what to click and why, as
+              each person in the workflow.
             </p>
           </div>
           <SampleFinding />

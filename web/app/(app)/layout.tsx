@@ -1,6 +1,6 @@
 import { AppSidebar } from "@/components/app-sidebar";
 import { AuthProvider } from "@/components/auth-provider";
-import { DemoGuide } from "@/components/demo-guide";
+import { DemoTour } from "@/components/demo-tour";
 import { DemoSwitcher } from "@/components/demo-switcher";
 import {
   SidebarInset,
@@ -30,7 +30,7 @@ export default function AppLayout({ children }: LayoutProps<"/">) {
               <div className="flex flex-wrap items-center justify-end gap-3">
                 {DEMO_MODE && (
                   <>
-                    <DemoGuide />
+                    <DemoTour />
                     <DemoSwitcher />
                   </>
                 )}

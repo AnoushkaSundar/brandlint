@@ -1,53 +1,46 @@
 "use client";
 
+import { ArrowRight } from "lucide-react";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { DEMO_ACCOUNTS, type DemoAccount, switchTo } from "@/lib/demo";
+import { accountFor, saveTour, switchTo, TOUR } from "@/lib/demo";
 
-// One-click sign-in for the public demo, so nobody needs a password.
-export function DemoLogins({ next }: { next: string }) {
-  const [busy, setBusy] = useState<string | null>(null);
+// The public demo's only way in: no form, no password. It signs in as the creator and
+// starts the guided tour on its first page.
+export function StartDemo() {
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function signIn(account: DemoAccount) {
-    setBusy(account.email);
+  async function start() {
+    setBusy(true);
     setError(null);
     try {
-      await switchTo(account, account.role === "creator" ? next : "/content");
+      saveTour(0, true);
+      const first = TOUR[0];
+      await switchTo(accountFor(first.role), "/content");
     } catch {
-      setError("Couldn't sign in. Try again in a moment.");
-      setBusy(null);
+      setError("Couldn't start the demo. Try again in a moment.");
+      setBusy(false);
     }
   }
 
   return (
-    <section aria-labelledby="demo-heading" className="mt-6 border-t pt-6">
-      <h2 id="demo-heading" className="text-sm font-medium">
-        Try the demo
-      </h2>
-      <p className="mt-1 text-sm text-muted-foreground">
-        Start as the creator. Once you&apos;re in, use the Demo guide to switch
-        roles.
-      </p>
-      <div className="mt-3 flex flex-col gap-2">
-        {DEMO_ACCOUNTS.map((account) => (
-          <Button
-            key={account.email}
-            variant={account.role === "creator" ? "default" : "outline"}
-            disabled={busy !== null}
-            onClick={() => signIn(account)}
-            className="justify-start"
-          >
-            {busy === account.email ? "Signing in…" : `Continue as ${account.label}`}
-          </Button>
-        ))}
-      </div>
+    <div className="flex flex-col gap-4">
+      <ul className="space-y-2 text-sm text-muted-foreground">
+        <li>A short guided tour, about five minutes.</li>
+        <li>You&apos;ll play each person in the workflow, from writer to legal.</li>
+        <li>Everything is real: real AI checks, and real permissions.</li>
+      </ul>
+      <Button size="lg" disabled={busy} onClick={start}>
+        {busy ? "Starting…" : "Start the demo"}
+        <ArrowRight aria-hidden="true" />
+      </Button>
       {error && (
-        <p role="alert" className="mt-2 text-sm text-destructive">
+        <p role="alert" className="text-sm text-destructive">
           {error}
         </p>
       )}
-    </section>
+    </div>
   );
 }

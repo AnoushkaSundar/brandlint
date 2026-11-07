@@ -1,8 +1,8 @@
 """Gets a fresh deployment ready for judges: steps 1 and 2 of the demo, done for them.
 
 It ingests and approves the guideline, adds the override history governance needs, and
-uploads and reviews the three demo pieces, leaving them ready to resolve. Run it once
-on an empty database, inside the api container:
+uploads and reviews the three demo pieces, leaving them ready to resolve. Safe to run
+again, inside the api container:
 
     docker compose exec api python /deploy/preload.py
 """
@@ -15,7 +15,7 @@ from pathlib import Path
 import httpx
 
 sys.path.insert(0, "/demo")
-import seed_history  # noqa: E402
+import seed_history
 
 API = "http://localhost:8000"
 PASSWORD = "brandlint-demo"
@@ -25,6 +25,8 @@ PIECES = [
     ("LinkedIn post", "linkedin", "linkedin-post.html"),
     ("Spring banner", "banner", "banner.png"),
 ]
+# Must match FINAL_DRAFT in web/lib/demo.ts, which the tour looks for.
+FINAL_DRAFT = "Agency blog, final draft"
 
 
 def token(email: str) -> str:
@@ -65,10 +67,62 @@ def wait_for(client: httpx.Client, engine_id: str) -> str:
     return "ended"
 
 
+def decide(client, content_id, finding_id, action, reason=None):
+    return client.post(
+        f"/workflow/content/{content_id}/findings/{finding_id}/decisions",
+        json={"action": action, "reason": reason},
+    )
+
+
+def move(client, content_id, to):
+    return client.post(
+        f"/workflow/content/{content_id}/transitions",
+        json={"to": to, "reason": "Ready for the demo."},
+    )
+
+
+def upload(creator, title, channel, name) -> tuple[str, str]:
+    created = creator.post(
+        "/content",
+        data={"title": title, "channel": channel, "source": "agency", "data_class": "public"},
+        files={"file": (name, (DEMO / "pieces" / name).read_bytes())},
+    )
+    created.raise_for_status()
+    content_id = created.json()["id"]
+    review = creator.post(f"/content/{content_id}/reviews")
+    review.raise_for_status()
+    started = time.time()
+    ended = wait_for(creator, review.json()["engine_review_id"])
+    moved = move(creator, content_id, "resolving").status_code
+    print(f"  {title}: review {ended} in {time.time() - started:.0f}s, resolving={moved}")
+    if ended != "done":
+        raise SystemExit(f"{title}'s review didn't finish.")
+    return content_id, review.json()["engine_review_id"]
+
+
+def stage_for_manager(creator, reviewer, content_id) -> None:
+    """Settles every finding, as a reviewer would, so the piece waits for the manager.
+    The tour then shows a manager approving it and legal signing it off."""
+    board = creator.get(f"/workflow/content/{content_id}/board").json()
+    for finding in board["findings"]:
+        if finding["status"] != "open":
+            continue
+        settled = decide(reviewer, content_id, finding["id"], "override", "Checked with the source.")
+        if settled.status_code not in (200, 201):
+            decide(reviewer, content_id, finding["id"], "resolve", "Checked for the demo.")
+    for client, to in ((creator, "reviewer_check"), (reviewer, "manager_approval")):
+        response = move(client, content_id, to)
+        if response.status_code != 200:
+            raise SystemExit(f"Couldn't move the final draft to {to}: {response.text[:160]}")
+    print("  final draft: waiting for the manager")
+
+
 def main() -> int:
+    """Safe to run again: each part is skipped when it's already done."""
     admin = login("admin@tarnhollow.example")
     if admin.get("/admin/rulebook").status_code == 200:
-        sys.exit("A rulebook is already approved. Preload only runs on an empty database.")
+        print("Rulebook already approved, skipping ingest.")
+        return stage(admin)
 
     print("Ingesting the guideline…", flush=True)
     job = admin.post(
@@ -88,26 +142,19 @@ def main() -> int:
     print("Adding the override history…", flush=True)
     if seed_history.main() != 0:
         sys.exit("The override history failed.")
+    return stage(admin)
 
+
+def stage(admin: httpx.Client) -> int:
     creator = login("agency@tarnhollow.example")
+    reviewer = login("reviewer@tarnhollow.example")
+    have = {piece["title"] for piece in creator.get("/content").json()}
     for title, channel, name in PIECES:
-        created = creator.post(
-            "/content",
-            data={"title": title, "channel": channel, "source": "agency", "data_class": "public"},
-            files={"file": (name, (DEMO / "pieces" / name).read_bytes())},
-        )
-        created.raise_for_status()
-        content_id = created.json()["id"]
-        review = creator.post(f"/content/{content_id}/reviews")
-        review.raise_for_status()
-        started = time.time()
-        ended = wait_for(creator, review.json()["engine_review_id"])
-        moved = creator.post(
-            f"/workflow/content/{content_id}/transitions", json={"to": "resolving"}
-        ).status_code
-        print(f"  {title}: review {ended} in {time.time() - started:.0f}s, resolving={moved}")
-        if ended != "done":
-            return 1
+        if title not in have:
+            upload(creator, title, channel, name)
+    if FINAL_DRAFT not in have:
+        content_id, _ = upload(creator, FINAL_DRAFT, "blog", "agency-blog.docx")
+        stage_for_manager(creator, reviewer, content_id)
     print("Ready for judges.")
     return 0
 
