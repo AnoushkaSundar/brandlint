@@ -1,9 +1,12 @@
+from fastapi import HTTPException, status
 from mocks import engine as mock_engine
 from sqlalchemy.orm import Session
 
 from app.clients.flags import use_mock
 from app.contracts import Chunk, ContentSource, Finding, FixSuggestion
 from app.db import get_sessionmaker
+
+UNREADABLE = "This file couldn't be read. It may be damaged, so upload a new version."
 
 
 def start_review(
@@ -20,6 +23,10 @@ def start_review(
 
     from app.engine import reviews
 
+    try:
+        reviews.check_readable(source)
+    except reviews.UnreadableContent:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, UNREADABLE) from None
     return reviews.start_review(content_version_id, channel, rulebook_version, source)
 
 
