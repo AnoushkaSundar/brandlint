@@ -21,6 +21,8 @@ import {
   createFact,
   expiry,
   getFacts,
+  getImpact,
+  queueRereview,
   updateFact,
 } from "@/lib/admin";
 import type { DataClass, Fact } from "@/lib/contracts";
@@ -151,31 +153,81 @@ function ExpiryBadge({ validUntil }: { validUntil?: string | null }) {
   );
 }
 
-function ImpactNotice({
-  factId,
-  impact,
-}: {
-  factId: string;
-  impact: Impact[];
-}) {
+type ImpactView = { id: string; items: Impact[]; saved: boolean };
+
+function ImpactNotice({ view }: { view: ImpactView }) {
+  const { id: factId, items: impact, saved } = view;
+  const pieces = [...new Set(impact.map((item) => item.content_id))];
+  const [queued, setQueued] = useState<Set<string>>(new Set());
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function queue(contentIds: string[]) {
+    setBusy(true);
+    setError(null);
+    try {
+      const done = await queueRereview(factId, contentIds);
+      setQueued(new Set([...queued, ...done.queued]));
+    } catch (caught) {
+      setError(errorMessage(caught));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const waiting = pieces.filter((id) => !queued.has(id));
   return (
     <SavedNotice>
-      Saved a new version of {factId}.{" "}
+      {saved ? `Saved a new version of ${factId}. ` : ""}
       {impact.length === 0
-        ? "No reviewed piece cites it."
-        : `${impact.length} ${impact.length === 1 ? "piece cites" : "pieces cite"} the old wording and may need another review:`}
+        ? `No reviewed piece cites ${factId}.`
+        : `${pieces.length} ${pieces.length === 1 ? "piece cites" : "pieces cite"} ${saved ? "the old wording" : factId} and may need another review:`}
       {impact.length > 0 && (
-        <ul className="mt-2 list-disc pl-5">
-          {impact.map((item) => (
-            <li key={`${item.content_id}-${item.claim_text}`}>
-              <Link className="underline" href={`/content/${item.content_id}`}>
-                “{item.claim_text}”
-              </Link>{" "}
-              <span className="text-muted-foreground">({item.state})</span>
-            </li>
-          ))}
-        </ul>
+        <>
+          <ul className="mt-2 flex flex-col gap-2">
+            {impact.map((item) => (
+              <li
+                key={`${item.content_id}-${item.claim_text}`}
+                className="flex flex-wrap items-center gap-2"
+              >
+                <Link
+                  className="underline"
+                  href={`/content/${item.content_id}`}
+                >
+                  “{item.claim_text}”
+                </Link>
+                <span className="text-muted-foreground">({item.state})</span>
+                {queued.has(item.content_id) ? (
+                  <span className="font-medium">Re-review queued</span>
+                ) : (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={busy}
+                    aria-label={`Queue re-review of “${item.claim_text}”`}
+                    onClick={() => queue([item.content_id])}
+                  >
+                    Queue re-review
+                  </Button>
+                )}
+              </li>
+            ))}
+          </ul>
+          {waiting.length > 1 && (
+            <Button
+              type="button"
+              size="sm"
+              className="mt-3"
+              disabled={busy}
+              onClick={() => queue(waiting)}
+            >
+              Queue all {waiting.length}
+            </Button>
+          )}
+        </>
       )}
+      <ErrorNotice message={error} />
     </SavedNotice>
   );
 }
@@ -184,9 +236,17 @@ export function FactsScreen() {
   const { data: facts, error: loadError, reload } = useLoaded(getFacts);
   const [editing, setEditing] = useState<string | "new" | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [impact, setImpact] = useState<{ id: string; items: Impact[] } | null>(
-    null,
-  );
+  const [impact, setImpact] = useState<ImpactView | null>(null);
+
+  async function showImpact(id: string) {
+    setError(null);
+    setImpact(null);
+    try {
+      setImpact({ id, items: await getImpact(id), saved: false });
+    } catch (caught) {
+      setError(errorMessage(caught));
+    }
+  }
 
   async function save(fact: FactInput, id?: string) {
     setError(null);
@@ -194,7 +254,7 @@ export function FactsScreen() {
     try {
       if (id) {
         const saved = await updateFact(id, fact);
-        setImpact({ id, items: saved.impact });
+        setImpact({ id, items: saved.impact, saved: true });
       } else {
         await createFact(fact);
       }
@@ -235,7 +295,12 @@ export function FactsScreen() {
         />
       )}
       <ErrorNotice message={error ?? loadError} />
-      {impact && <ImpactNotice factId={impact.id} impact={impact.items} />}
+      {impact && (
+        <ImpactNotice
+          key={`${impact.id}-${impact.saved}-${impact.items.length}`}
+          view={impact}
+        />
+      )}
 
       {facts && list.length === 0 && (
         <p className="mt-6 rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
@@ -264,15 +329,26 @@ export function FactsScreen() {
                 </p>
               </div>
               {editing !== fact.id && (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  aria-label={`Edit ${fact.id}`}
-                  onClick={() => setEditing(fact.id)}
-                >
-                  Edit
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    aria-label={`Affected pieces for ${fact.id}`}
+                    onClick={() => showImpact(fact.id)}
+                  >
+                    Affected pieces
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    aria-label={`Edit ${fact.id}`}
+                    onClick={() => setEditing(fact.id)}
+                  >
+                    Edit
+                  </Button>
+                </div>
               )}
             </div>
             {editing === fact.id && (

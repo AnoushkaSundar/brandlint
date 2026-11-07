@@ -3,6 +3,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
+from app.content.rereview import RereviewOut
 from app.contracts import ContentState, DataClass
 
 Channel = Literal["blog", "linkedin", "email", "ad", "banner", "document"]
@@ -49,3 +50,5 @@ class ContentDetail(ContentOut):
     # Newest first.
     versions: list[VersionOut]
     latest_review: ReviewOut | None
+    # An admin asked for another review since the latest one started.
+    rereview: RereviewOut | None = None

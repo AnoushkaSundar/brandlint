@@ -739,3 +739,78 @@ def test_approval_is_audited(empty_rulebook, client_for, guideline):
     actions = set(empty_rulebook.scalars(select(AuditLog.action)))
 
     assert {"rules:ingest", "rule:reject", "rules:approve"} <= actions
+
+
+# Re-review after a fact changes
+
+
+@pytest.fixture
+def affected_piece(seeded, client_for, monkeypatch):
+    from app.content.models import Content
+
+    creator = User(
+        email="writer@example.com",
+        name="writer",
+        role=Role.creator.value,
+        password_hash="not-used",
+    )
+    seeded.add(creator)
+    seeded.flush()
+    content = Content(
+        title="Launch post",
+        channel="blog",
+        source="in-house",
+        data_class="public",
+        creator_id=creator.id,
+    )
+    seeded.add(content)
+    seeded.commit()
+    monkeypatch.setattr(
+        "app.admin.router.memory.impact",
+        lambda fact_id, session: [
+            {"content_id": content.id, "state": "draft", "claim_text": "by 30%"}
+        ],
+    )
+    return content.id
+
+
+def test_an_admin_queues_a_rereview(affected_piece, client_for, seeded):
+    from app.content import rereview
+
+    response = client_for(Role.admin).post(
+        "/admin/facts/F-002/rereview", json={"content_ids": [affected_piece]}
+    )
+
+    assert response.json() == {"queued": [affected_piece]}
+    request = rereview.pending(seeded, affected_piece, None)
+    assert request is not None
+    assert request.fact_id == "F-002"
+
+
+def test_only_affected_pieces_can_be_queued(affected_piece, client_for):
+    response = client_for(Role.admin).post(
+        "/admin/facts/F-002/rereview", json={"content_ids": ["someone-else"]}
+    )
+
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize("role", NON_READERS + [Role.legal])
+def test_only_an_admin_queues_a_rereview(affected_piece, client_for, role):
+    response = client_for(role).post(
+        "/admin/facts/F-002/rereview", json={"content_ids": [affected_piece]}
+    )
+
+    assert response.status_code == 403
+
+
+def test_a_request_is_audited(affected_piece, client_for, seeded):
+    client_for(Role.admin).post(
+        "/admin/facts/F-002/rereview", json={"content_ids": [affected_piece]}
+    )
+
+    entry = seeded.scalars(
+        select(AuditLog).where(AuditLog.action == "content:rereview_requested")
+    ).one()
+    assert entry.target_id == affected_piece
+    assert entry.after == {"fact_id": "F-002"}

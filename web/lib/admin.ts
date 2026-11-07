@@ -146,3 +146,19 @@ export function expiry(
   if (left < 0) return "expired";
   return left <= EXPIRY_WARNING_DAYS * DAY_MS ? "soon" : null;
 }
+
+export function getImpact(factId: string): Promise<Impact[]> {
+  return apiFetch<Impact[]>(
+    `/memory/impact?fact_id=${encodeURIComponent(factId)}`,
+  );
+}
+
+export function queueRereview(
+  factId: string,
+  contentIds: string[],
+): Promise<{ queued: string[] }> {
+  return apiFetch(`/admin/facts/${encodeURIComponent(factId)}/rereview`, {
+    method: "POST",
+    body: JSON.stringify({ content_ids: contentIds }),
+  });
+}
