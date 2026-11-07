@@ -257,13 +257,28 @@ def _to_finding(candidate: Candidate) -> Finding:
     )
 
 
+def _already_blocked(candidate: Candidate, blocked_chunks: Collection[str]) -> bool:
+    chunk_ids = {span["chunk_id"] for span in candidate.spans}
+    return (
+        candidate.verdict == Verdict.UNSURE
+        and candidate.tier > 0
+        and bool(chunk_ids)
+        and chunk_ids <= set(blocked_chunks)
+    )
+
+
 def gate(
     candidates: Iterable[Candidate],
     *,
     known_rule_ids: Collection[str],
     known_fact_ids: Collection[str],
+    blocked_chunks: Collection[str] = (),
 ) -> tuple[list[Finding], list[Gap]]:
-    """Split candidates into findings a user may see and gaps for the gap log."""
+    """Split candidates into findings a user may see and gaps for the gap log.
+
+    `blocked_chunks` already carry a critical injection finding only a reviewer can
+    clear, so an UNSURE about that same text would only make them clear it twice.
+    """
     cited: list[Candidate] = []
     gaps: list[Gap] = []
     for candidate in candidates:
@@ -274,6 +289,7 @@ def gate(
         else:
             gaps.append(_to_gap(candidate))
 
+    cited = [c for c in cited if not _already_blocked(c, blocked_chunks)]
     survivors = _lower_conflicts(_dedupe(cited))
     survivors.sort(key=lambda c: (c.tier, c.stable_id()))
     return [_to_finding(c) for c in survivors], gaps

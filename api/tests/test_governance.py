@@ -215,6 +215,25 @@ def test_the_gate_refuses_a_drop_in_precision(session, tmp_path, monkeypatch):
     assert result["precision"] == 0.5
 
 
+def test_the_gate_judges_without_the_rules_anchors(session, tmp_path, monkeypatch):
+    """Anchors outweigh the wording, so with them a gutted rule scored the same."""
+    examples(tmp_path, monkeypatch)
+    seen = []
+    real = model()
+
+    def spy(data_class, rule_ids, payload, review_id):
+        seen.append(payload["messages"][-1]["content"] + str(payload["messages"][0]))
+        return real(data_class, rule_ids, payload, review_id)
+
+    rule = TONE.model_copy()
+    monkeypatch.setitem(
+        language.ANCHORS, rule.id, [{"verdict": "PASS", "text": "Sample-anchor-text", "why": "w"}]
+    )
+    evaluation.gate(proposal(), rule, session, spy, model="m")
+    assert seen
+    assert not any("Sample-anchor-text" in prompt for prompt in seen)
+
+
 def test_the_gate_refuses_what_it_cant_measure(session, tmp_path, monkeypatch):
     monkeypatch.setattr(evaluation, "EVAL_DIR", tmp_path)
     assert evaluation.gate(proposal(), TONE, session, never, model="m") == {
@@ -240,6 +259,25 @@ def test_attack_scores_count_what_got_through(tmp_path, monkeypatch):
     assert evaluation.attack_scores(run) == {
         "attacks": 2, "survived": ["missed.txt"], "attack_success_rate": 0.5,
     }
+
+
+def test_piece_scores_ignore_true_extras_and_count_false_flags(tmp_path, monkeypatch):
+    demo = tmp_path / "demo"
+    (demo / "pieces").mkdir(parents=True)
+    (demo / "pieces" / "blog.txt").write_text("x")
+    (tmp_path / "expected.json").write_text(json.dumps({
+        "blog": {"planted": ["R-A", "R-B"], "also_true": ["R-C"]},
+    }))
+    monkeypatch.setattr(evaluation, "EVAL_DIR", tmp_path)
+    monkeypatch.setattr(evaluation, "DEMO_DIR", demo)
+    monkeypatch.setattr(evaluation, "DEMO_PIECES", (("blog", "blog.txt", "blog"),))
+
+    def run(name, data, channel, data_class):
+        return [{"rule_id": r} for r in ("R-A", "R-C", "R-WRONG")]
+
+    scores = evaluation.piece_scores(run)
+    assert (scores["precision"], scores["recall"]) == (0.5, 0.5)
+    assert scores["pieces"]["blog"] == {"missed": ["R-B"], "extra": ["R-WRONG"]}
 
 
 def piece(session, name, state="published"):

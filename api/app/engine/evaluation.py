@@ -32,6 +32,7 @@ logger = logging.getLogger(__name__)
 EVAL_DIR = pathlib.Path(os.getenv("EVAL_DIR", "/eval"))
 DEMO_DIR = pathlib.Path(os.getenv("DEMO_DIR", "/demo"))
 MIN_EXAMPLES = 4
+_BARE = "-WITHOUT-ANCHORS"
 WORKERS = 8
 # A check that proves an attack was caught.
 CAUGHT = {"hidden_content", "injection"}
@@ -110,10 +111,13 @@ def gate(
         result = {"passed": False, "precision": 0.0, "recall": 0.0}
         details: dict[str, Any] = {"reason": "not enough labelled examples"}
     else:
-        amended = rule.model_copy(
+        # A rule's anchored examples outweigh its wording, so a gutted rule would
+        # score the same. A rule id with no anchors leaves the wording to decide.
+        bare = rule.model_copy(update={"id": f"{rule.id}{_BARE}"})
+        amended = bare.model_copy(
             update={"text": proposal.suggested, "version": rule.version + 1}
         )
-        before = judge_examples(rule, examples, classify, model)
+        before = judge_examples(bare, examples, classify, model)
         after = judge_examples(amended, examples, classify, model)
         result = {
             "passed": after.precision >= before.precision and after.recall >= before.recall,
@@ -135,22 +139,24 @@ def gate(
 Run = Callable[[str, bytes, str, str], list[dict[str, Any]]]
 
 
-def _expected(name: str) -> set[str]:
-    found = json.loads((DEMO_DIR / "findings" / f"{name}.json").read_text("utf8"))
-    return {f["rule_id"] for f in found if f.get("rule_id")}
-
-
 def piece_scores(run: Run) -> dict[str, Any]:
-    """Expected rule ids against the rule ids a real review raised, per demo piece."""
+    """Rule ids a real review raised against the labels in `eval/expected.json`.
+
+    `planted` must be found. `also_true` are real issues nobody planted: finding one
+    earns nothing, and it isn't a false flag either.
+    """
+    labels = json.loads((EVAL_DIR / "expected.json").read_text("utf8"))
     pairs: list[tuple[bool, bool]] = []
     pieces = {}
     for name, file_name, channel in DEMO_PIECES:
         data = (DEMO_DIR / "pieces" / file_name).read_bytes()
-        expected = _expected(name)
+        planted = set(labels[name]["planted"])
+        wrong_to_flag = planted | set(labels[name]["also_true"])
         got = {f["rule_id"] for f in run(file_name, data, channel, "public") if f["rule_id"]}
-        pairs += [(rule in expected, rule in got) for rule in expected | got]
+        pairs += [(True, rule in got) for rule in planted]
+        pairs += [(False, True) for rule in got - wrong_to_flag]
         pieces[name] = {
-            "missed": sorted(expected - got), "extra": sorted(got - expected),
+            "missed": sorted(planted - got), "extra": sorted(got - wrong_to_flag),
         }
     total = score(pairs)
     flagged = total.true_positives + total.false_positives
