@@ -111,7 +111,9 @@ def test_new_content_is_readable_straight_away(client_for):
     assert client.get(f"/content/{content_id}").status_code == 200
 
 
-@pytest.mark.parametrize("channel", ["blog", "linkedin", "email", "ad", "banner", "document"])
+@pytest.mark.parametrize(
+    "channel", ["blog", "linkedin", "email", "ad", "banner", "document"]
+)
 def test_every_channel_is_accepted(client_for, channel):
     assert create(client_for(), channel=channel).status_code == 201
 
@@ -368,8 +370,14 @@ def test_a_repeat_review_does_not_log_a_change(client_for, session):
 def test_only_the_creator_can_start_a_review(client_for):
     content_id = create(client_for(name="sam")).json()["id"]
 
-    assert client_for(Role.reviewer).post(f"/content/{content_id}/reviews").status_code == 403
-    assert client_for(name="priya").post(f"/content/{content_id}/reviews").status_code == 404
+    assert (
+        client_for(Role.reviewer).post(f"/content/{content_id}/reviews").status_code
+        == 403
+    )
+    assert (
+        client_for(name="priya").post(f"/content/{content_id}/reviews").status_code
+        == 404
+    )
 
 
 @pytest.mark.parametrize("state", ["manager_approval", "published", "rejected"])
@@ -397,7 +405,9 @@ def test_images_display_inline(client_for):
 
 def test_uploaded_html_is_only_ever_a_download(client_for):
     client = client_for()
-    version = upload(client, "post.html", b"<script>alert(1)</script>").json()["versions"][0]
+    version = upload(client, "post.html", b"<script>alert(1)</script>").json()[
+        "versions"
+    ][0]
 
     response = client.get(f"/content/versions/{version['id']}/file")
 
@@ -480,7 +490,9 @@ def test_a_review_covers_the_newest_upload(client_for, monkeypatch):
     assert calls[0].file_bytes == PNG
 
 
-def test_a_missing_upload_is_refused_and_changes_nothing(client_for, session, monkeypatch):
+def test_a_missing_upload_is_refused_and_changes_nothing(
+    client_for, session, monkeypatch
+):
     calls = captured_source(monkeypatch)
     client = client_for()
     content_id = upload(client, "guide.pdf", PDF).json()["id"]
@@ -531,3 +543,56 @@ def test_a_new_rulebook_lets_unchanged_text_be_reviewed_again(
     monkeypatch.setattr("app.content.router.current_rulebook_version", lambda *args: 2)
 
     assert client.post(f"/content/{content_id}/reviews").status_code == 201
+
+
+@pytest.mark.parametrize("field", ["text", "title", "source"])
+def test_a_null_character_is_refused_not_a_server_error(client_for, field):
+    overrides = (
+        {"text": "Hello\x00 there"} if field == "text" else {field: "In\x00house"}
+    )
+
+    response = create(client_for(), **overrides)
+
+    assert response.status_code == 422
+    assert "null character" in response.json()["detail"]
+
+
+def test_a_text_file_with_a_null_character_is_refused(client_for):
+    response = upload(client_for(), "draft.txt", b"Hello\x00 there")
+
+    assert response.status_code == 422
+    assert "null character" in response.json()["detail"]
+
+
+def test_a_new_version_with_a_null_character_is_refused(client_for):
+    client = client_for()
+    content_id = create(client).json()["id"]
+
+    response = client.post(f"/content/{content_id}/versions", data={"text": "Hi\x00"})
+
+    assert response.status_code == 422
+
+
+def test_a_piece_shows_no_rereview_by_default(client_for):
+    assert create(client_for()).json()["rereview"] is None
+
+
+def test_a_queued_rereview_shows_and_lets_unchanged_text_be_reviewed(
+    client_for, session
+):
+    from app.auth.models import User
+    from app.content import rereview
+
+    client = client_for()
+    content_id = create(client).json()["id"]
+    client.post(f"/content/{content_id}/reviews")
+    session.get(Content, content_id).state = "resolving"
+    session.commit()
+    admin = session.scalars(select(User)).first()
+    rereview.queue(session, "F-002", [content_id], admin)
+    session.commit()
+
+    detail = client.get(f"/content/{content_id}").json()
+    assert detail["rereview"]["fact_id"] == "F-002"
+    assert client.post(f"/content/{content_id}/reviews").status_code == 201
+    assert client.get(f"/content/{content_id}").json()["rereview"] is None
