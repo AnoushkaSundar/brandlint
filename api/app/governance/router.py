@@ -40,7 +40,12 @@ def _routes() -> APIRouter:
 
         return agent.run(session, agent.gateway_draft(session), gate)
 
-    @routes.get("/spot-checks")
+    @routes.get(
+        "/spot-checks",
+        dependencies=[
+            Depends(require_roles(Role.reviewer, Role.manager, Role.legal, Role.admin))
+        ],
+    )
     def list_spot_checks(session: SessionDep) -> list[dict]:
         return spot_checks.sample(session)
 
