@@ -17,6 +17,7 @@ from app.contracts import (
     Fact,
     Finding,
     Rule,
+    RuleStatus,
     Severity,
     Term,
     Trace,
@@ -53,6 +54,15 @@ class CheckContext:
     facts: list[Fact] = field(default_factory=list)
     rules: list[Rule] = field(default_factory=list)
     as_of: date = field(default_factory=date.today)
+
+
+def brand_rule(ctx: CheckContext, phrase: str) -> Rule | None:
+    """The approved brand rule that covers a code check. Rules carry no topic field,
+    so this matches the wording. Callers fall back to a built-in or to the fact."""
+    for rule in ctx.rules:
+        if rule.status == RuleStatus.approved and phrase in rule.text.lower():
+            return rule
+    return None
 
 
 def _finding_id(ctx: CheckContext, check: str, anchor: str) -> str:

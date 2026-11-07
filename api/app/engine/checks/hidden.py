@@ -9,6 +9,7 @@ from app.engine.checks.context import (
     _SEC_TEXT,
     SEC_HIDDEN_CONTENT,
     CheckContext,
+    brand_rule,
     make_finding,
 )
 from app.engine.chunking import ParsedChunk
@@ -48,6 +49,8 @@ def _is_visible(chunk: ParsedChunk) -> bool:
 def check_hidden_content(
     chunks: list[ParsedChunk], ctx: CheckContext
 ) -> list[Finding]:
+    rule = brand_rule(ctx, "hidden text")
+    cited = rule.text if rule else _SEC_TEXT[SEC_HIDDEN_CONTENT]
     findings: list[Finding] = []
     for chunk in chunks:
         reasons = _hidden_reasons(chunk)
@@ -57,12 +60,13 @@ def check_hidden_content(
                     ctx,
                     check=CheckType.hidden_content,
                     severity=Severity.critical,
-                    cited_text=_SEC_TEXT[SEC_HIDDEN_CONTENT],
+                    cited_text=cited,
                     explanation="Hidden content: " + "; ".join(reasons) + ".",
                     anchor=f"{chunk.id}:hidden",
                     spans=[{"chunk_id": chunk.id, "start": 0, "end": len(chunk.text)}],
+                    rule=rule,
                     rule_id=SEC_HIDDEN_CONTENT,
-                    sources=[SEC_HIDDEN_CONTENT],
+                    sources=[rule.id if rule else SEC_HIDDEN_CONTENT],
                 )
             )
 
@@ -81,15 +85,16 @@ def check_hidden_content(
                     ctx,
                     check=CheckType.hidden_content,
                     severity=Severity.critical,
-                    cited_text=_SEC_TEXT[SEC_HIDDEN_CONTENT],
+                    cited_text=cited,
                     explanation=(
                         "Image text is not present in the visible copy "
                         "(possible hidden instruction or claim)."
                     ),
                     anchor=f"{chunk.id}:ocr",
                     spans=[{"chunk_id": chunk.id, "start": 0, "end": len(chunk.text)}],
+                    rule=rule,
                     rule_id=SEC_HIDDEN_CONTENT,
-                    sources=[SEC_HIDDEN_CONTENT],
+                    sources=[rule.id if rule else SEC_HIDDEN_CONTENT],
                 )
             )
     return findings

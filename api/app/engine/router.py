@@ -14,11 +14,12 @@ from collections.abc import AsyncIterator
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 
-from app.auth.dependencies import SessionDep, current_user
+from app.admin.rulebook import rulebook_at
+from app.auth.dependencies import SessionDep, current_user, require_roles
 from app.clients.flags import use_mock
-from app.contracts import Chunk
+from app.contracts import Chunk, Proposal, Role
 from app.db import get_sessionmaker
-from app.engine import graph, replay, reviews
+from app.engine import evaluation, graph, replay, reviews
 
 POLL_S = 0.05
 
@@ -79,6 +80,14 @@ def _review_routes() -> APIRouter:
         if result is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Finding not found")
         return result
+
+    @routes.post("/eval/gate", dependencies=[Depends(require_roles(Role.admin))])
+    def eval_gate(proposal: Proposal, session: SessionDep) -> dict:
+        rule = next((r for r in rulebook_at(session) if r.id == proposal.rule_id), None)
+        if rule is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Rule not found")
+        classify = graph.gateway_classify(get_sessionmaker())
+        return evaluation.gate(proposal, rule, session, classify, model=graph.PINNED_MODEL)
 
     return routes
 

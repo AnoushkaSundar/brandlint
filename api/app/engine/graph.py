@@ -153,6 +153,7 @@ def build_review_graph(
             state["candidates"],
             known_rule_ids=known_rule_ids(ctx),
             known_fact_ids={fact.id for fact in ctx.facts},
+            blocked_chunks=flagged_chunk_ids(state["chunks"], ctx),
         )
         if gaps:
             gap_sink(gaps)
@@ -223,6 +224,7 @@ def run_review(
                 collected,
                 known_rule_ids=known_rule_ids(ctx),
                 known_fact_ids=known_facts,
+                blocked_chunks=flagged_chunk_ids(chunks, ctx),
             )
             publish(ready)
     if manifests is not None:
