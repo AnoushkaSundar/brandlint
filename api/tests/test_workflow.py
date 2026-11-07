@@ -1028,11 +1028,6 @@ def test_visible_styling_keeps_the_text():
     assert text == "Hello"
 
 
-def test_zero_width_characters_go_but_the_sentence_stays():
-    text = text_with_fixes([chunk("c1", 0, "Hel\u200blo there")], [], {})
-
-    assert text == "Hello there"
-
 
 @pytest.mark.parametrize("kind", ["image", "hidden"])
 def test_a_fix_on_text_nobody_reads_is_never_dropped_silently(kind):
@@ -1218,3 +1213,95 @@ def test_content_model_still_tracks_the_state(client_for, session):
     content_id = resolving(creator)
 
     assert session.get(Content, content_id).state == "resolving"
+
+
+# Hidden text, with or without a fix
+
+
+def linkedin(client):
+    content_id = client.post("/content", data={**FORM, "channel": "linkedin"}).json()["id"]
+    client.post(f"/content/{content_id}/reviews")
+    move(client, content_id, "resolving")
+    return content_id
+
+
+
+
+
+# Starting a failed review again
+
+
+@pytest.mark.parametrize("value", ["failed", "unknown"])
+def test_the_creator_can_restart_a_run_that_did_not_finish(client_for, monkeypatch, value):
+    creator = client_for()
+    content_id = started(creator)
+    run_status(monkeypatch, value)
+
+    assert board(creator, content_id)["can_restart"] is True
+    assert creator.post(f"/content/{content_id}/reviews").status_code == 201
+
+
+def test_a_running_review_cannot_be_started_twice(client_for, monkeypatch):
+    creator = client_for()
+    content_id = started(creator)
+    run_status(monkeypatch, "running")
+
+    assert board(creator, content_id)["can_restart"] is False
+    response = creator.post(f"/content/{content_id}/reviews")
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "This review is still running."
+
+
+def test_a_finished_run_offers_no_restart(client_for):
+    creator = client_for()
+    content_id = started(creator)
+
+    assert board(creator, content_id)["can_restart"] is False
+
+
+def test_only_the_creator_is_offered_a_restart(client_for, monkeypatch):
+    creator = client_for()
+    content_id = started(creator)
+    run_status(monkeypatch, "failed")
+
+    assert board(client_for(Role.reviewer, "lena"), content_id)["can_restart"] is False
+
+
+
+def test_zero_width_characters_are_left_for_emoji_and_scripts():
+    text = text_with_fixes([chunk("c1", 0, "a\u200db \u0915\u094d\u200d")], [], {})
+
+    assert text == "a\u200db \u0915\u094d\u200d"
+
+
+def test_overriding_hidden_text_makes_no_version_but_warns(client_for, session):
+    creator = client_for()
+    reviewer = client_for(Role.reviewer, "lena")
+    manager = client_for(Role.manager, "marcus")
+    content_id = linkedin(creator)
+    for item in board(reviewer, content_id)["findings"]:
+        decide(reviewer, content_id, item["id"], "override", "Checked the source")
+    move(creator, content_id, "reviewer_check")
+
+    move(reviewer, content_id, "manager_approval")
+
+    assert len(versions_of(session, content_id)) == 1
+    assert board(manager, content_id)["hidden_overridden"] is True
+
+
+def test_without_hidden_text_there_is_no_warning(client_for, no_findings):
+    creator = client_for()
+    content_id = resolving(creator)
+
+    assert board(creator, content_id)["hidden_overridden"] is False
+
+
+def test_a_finished_run_cannot_be_started_again(client_for):
+    creator = client_for()
+    content_id = started(creator)
+
+    response = creator.post(f"/content/{content_id}/reviews")
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "This review has already finished."

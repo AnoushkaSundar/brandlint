@@ -50,6 +50,9 @@ class MoveOut(BaseModel):
 class Board(BaseModel):
     state: ContentState
     legal_required: bool
+    can_restart: bool
+    # A reviewer let hidden text through, so manager and legal see a notice.
+    hidden_overridden: bool
     findings: list[FindingStanding]
     moves: list[MoveOut]
 

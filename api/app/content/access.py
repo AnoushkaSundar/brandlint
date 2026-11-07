@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.models import User
 from app.content.models import Content, ContentVersion
-from app.contracts import Role
+from app.contracts import ContentState, Role
 from app.workflow.models import Review
 
 
@@ -28,3 +28,15 @@ def latest_review(session: Session, content_id: str) -> Review | None:
         .order_by(Review.created_at.desc())
         .limit(1)
     )
+
+
+RESTARTABLE_RUNS = ("failed", "unknown")
+
+
+def can_start_again(state: str, run_status: str) -> bool:
+    """A run in AI review can be started again only if it ended without finishing.
+
+    A finished run is waiting to move on, and a running one is still going, so either
+    would repeat a paid review.
+    """
+    return state == ContentState.ai_review.value and run_status in RESTARTABLE_RUNS

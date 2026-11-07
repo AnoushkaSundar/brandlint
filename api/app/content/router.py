@@ -10,7 +10,11 @@ from app.auth.dependencies import CurrentUser, SessionDep, require_roles
 from app.auth.models import User
 from app.clients import engine as engine_client
 from app.content import storage
-from app.content.access import latest_review, readable_content
+from app.content.access import (
+    can_start_again,
+    latest_review,
+    readable_content,
+)
 from app.content.models import Content, ContentVersion
 from app.content.schemas import (
     Channel,
@@ -242,6 +246,13 @@ def start_review(content_id: str, user: Creator, session: SessionDep) -> Review:
         raise HTTPException(
             status.HTTP_409_CONFLICT, "Add a new version to review it again."
         )
+    if content.state == ContentState.ai_review.value and previous is not None:
+        run = engine_client.review_status(previous.engine_review_id, session)
+        if not can_start_again(content.state, run):
+            message = "This review is still running." if run == "running" else (
+                "This review has already finished."
+            )
+            raise HTTPException(status.HTTP_409_CONFLICT, message)
     source = _content_source(content, latest)
     rulebook_version = current_rulebook_version()
     review = Review(

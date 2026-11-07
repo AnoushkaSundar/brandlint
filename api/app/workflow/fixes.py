@@ -17,7 +17,6 @@ from app.workflow.models import FixOffer, Review
 MAX_FIX_ATTEMPTS = 2
 NO_SAFE_FIX = "No safe fix found; marked for review"
 HIDDEN_FONT_PT = 4
-_ZERO_WIDTH = dict.fromkeys(map(ord, "\u200b\u200c\u200d\u2060\ufeff"))
 
 
 class HasFixText(Protocol):
@@ -87,8 +86,7 @@ def offer_fix(
 def is_readable(chunk: Chunk) -> bool:
     """Whether a person reads this as copy. Matches the engine's hidden check.
 
-    Zero-width characters aren't here: they sit inside visible sentences, so
-    only the characters are removed, not the chunk.
+    Zero-width characters aren't here: emoji and several scripts need them.
     """
     style = chunk.style or {}
     color, background = style.get("color"), style.get("background")
@@ -165,7 +163,7 @@ def text_with_fixes(
                 raise FixesOverlap(chunk.id)
             text = text[:start] + fix_text + text[end:]
             limit = start
-        parts.append(text.translate(_ZERO_WIDTH))
+        parts.append(text)
     return "\n\n".join([*parts, *additions])
 
 

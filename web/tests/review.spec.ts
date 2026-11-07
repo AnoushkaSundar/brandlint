@@ -100,6 +100,8 @@ function boardFor(findings: readonly Finding[] = FINDINGS): Board {
   return {
     state: "resolving",
     legal_required: false,
+    can_restart: false,
+    hidden_overridden: false,
     findings: findings.map((finding) => ({
       id: finding.id,
       status: "open",
@@ -1151,6 +1153,37 @@ test.describe("replaying a verdict", () => {
     await expect(found).toContainText("claude-haiku-4-5");
   });
 
+  test("shows the real engine's inputs in readable form", async ({ page }) => {
+    await stubReview(page);
+    await page.route("**/stub-api/engine/verdicts/*/replay", (route) =>
+      route.fulfill({
+        json: {
+          identical: true,
+          verdict: "VIOLATION",
+          manifest: {
+            kind: "language",
+            chunk_id: "blog-p2",
+            content_hash: "abc123",
+            rule: { id: "R-TONE-01", version: 1, text: "Be warm." },
+            facts: [{ id: "F-001", version: 1 }],
+            model: "claude-haiku-4-5",
+            flagged: false,
+            as_of: "2026-11-07",
+          },
+        },
+      }),
+    );
+    await page.goto("/content/c1/review");
+
+    await replay(page).click();
+
+    const inputs = card(page, "retired name").locator("dl");
+    await expect(inputs).toContainText("R-TONE-01, version 1");
+    await expect(inputs).toContainText("F-001, version 1");
+    await expect(inputs).not.toContainText("[object Object]");
+    await expect(inputs).not.toContainText("abc123");
+  });
+
   test("works when the engine sends no inputs", async ({ page }) => {
     await stubReview(page);
     await page.route("**/stub-api/engine/verdicts/*/replay", (route) =>
@@ -1635,6 +1668,108 @@ test.describe("moving content through the workflow", () => {
     await page.goto("/content/c1/review");
 
     await expect(bar(page)).toContainText("Status: Resolving");
+  });
+
+  test("a failed run can be started again", async ({ page }) => {
+    await stubReview(page);
+    const failed = {
+      ...boardFor(),
+      state: "ai_review" as const,
+      can_restart: true,
+      moves: [
+        {
+          to: "resolving" as const,
+          needs_reason: false,
+          blocked_by: "The review didn't finish. Start it again.",
+        },
+      ],
+    };
+    await stubBoard(page, failed);
+    await page.route(
+      `**/stub-api/engine/reviews/${ENGINE_ID}/findings`,
+      (route) => route.abort(),
+    );
+    let starts = 0;
+    await page.route("**/stub-api/content/c1/reviews", (route) => {
+      starts += 1;
+      return route.fulfill({ status: 201, json: CONTENT.latest_review });
+    });
+    await page.goto("/content/c1/review");
+    await expect(bar(page)).toContainText("didn't finish");
+
+    // The new run has its own id, so findings from the failed one can't reappear.
+    const NEW_ID = "rev-demo-new";
+    let oldOpens = 0;
+    await page.route(`**/stub-api/engine/reviews/${ENGINE_ID}/findings`, (route) => {
+      oldOpens += 1;
+      return route.abort();
+    });
+    await stubReview(page, {
+      content: {
+        ...CONTENT,
+        latest_review: { ...CONTENT.latest_review, engine_review_id: NEW_ID },
+      },
+    });
+    await page.route(`**/stub-api/engine/reviews/${NEW_ID}/chunks`, (route) =>
+      route.fulfill({ json: CHUNKS }),
+    );
+    await page.route(`**/stub-api/engine/reviews/${NEW_ID}/findings`, (route) =>
+      route.fulfill({ contentType: "text/event-stream", body: stream(FINDINGS) }),
+    );
+    await bar(page).getByRole("button", { name: "Start review again" }).click();
+
+    await expect(findingCards(page)).toHaveCount(FINDINGS.length);
+    expect(starts).toBe(1);
+    expect(oldOpens).toBe(0);
+  });
+
+  test("manager and legal are warned about hidden text a reviewer let through", async ({
+    page,
+  }) => {
+    await stubReview(page);
+    await stubBoard(page, { ...boardFor(), state: "manager_approval", hidden_overridden: true });
+    await page.goto("/content/c1/review");
+
+    await expect(bar(page)).toContainText("A reviewer let hidden text through");
+  });
+
+  test("a refused restart says why", async ({ page }) => {
+    await stubReview(page);
+    await stubBoard(page, { ...boardFor(), state: "ai_review", can_restart: true });
+    await page.route("**/stub-api/content/c1/reviews", (route) =>
+      route.fulfill({
+        status: 409,
+        json: { detail: "This review is still running." },
+      }),
+    );
+    await page.goto("/content/c1/review");
+
+    await bar(page).getByRole("button", { name: "Start review again" }).click();
+
+    await expect(bar(page).getByRole("alert")).toHaveText(
+      "This review is still running.",
+    );
+  });
+
+  test("a dropped stream is reopened and catches up", async ({ page }) => {
+    await stubReview(page);
+    let opens = 0;
+    await page.route(
+      `**/stub-api/engine/reviews/${ENGINE_ID}/findings`,
+      (route) => {
+        opens += 1;
+        return opens === 1
+          ? route.abort()
+          : route.fulfill({
+              contentType: "text/event-stream",
+              body: stream(FINDINGS),
+            });
+      },
+    );
+    await page.goto("/content/c1/review");
+
+    await expect(findingCards(page)).toHaveCount(FINDINGS.length);
+    await expect(page.locator("main").getByRole("alert")).toHaveCount(0);
   });
 
   test("offers no moves on finished content", async ({ page }) => {
