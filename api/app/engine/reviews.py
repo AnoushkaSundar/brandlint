@@ -30,6 +30,7 @@ from app.engine.cache import VerdictCache
 from app.engine.checks import CheckContext
 from app.engine.chunking import ParsedChunk, chunk_document
 from app.engine.parsers import parse
+from app.gateway import policy
 
 logger = logging.getLogger(__name__)
 
@@ -183,6 +184,7 @@ def _execute(
             cache=VerdictCache(session_factory),
             manifests=manifests,
             claim_sink=_claim_log(session_factory, run),
+            model=policy.model_for(source.data_class),
         )
         base = {
             "fmt": check_format,

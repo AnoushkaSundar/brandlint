@@ -5,6 +5,7 @@ from __future__ import annotations
 import threading
 import time
 from datetime import UTC, datetime
+from types import SimpleNamespace
 
 import pytest
 
@@ -21,9 +22,9 @@ from app.engine import models, reviews
 from app.engine import router as engine_router
 from app.engine.agents import language
 from app.engine.brand import BrandData, load_brand
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
 TONE = Rule(
@@ -329,9 +330,34 @@ def client_for(session_factory, monkeypatch, *, signed_in=True) -> TestClient:
             yield session
 
     app.dependency_overrides[get_session] = session_override
+    monkeypatch.setattr(engine_router, "require_review", lambda *args: None)
     if signed_in:
-        app.dependency_overrides[current_user] = lambda: object()
+        app.dependency_overrides[current_user] = lambda: SimpleNamespace(role="admin")
     return TestClient(app)
+
+
+@pytest.mark.parametrize(
+    ("method", "path"),
+    [
+        ("get", "/engine/reviews/{review}/findings"),
+        ("get", "/engine/reviews/{review}/chunks"),
+        ("post", "/engine/verdicts/{finding}/replay"),
+    ],
+)
+def test_every_review_route_checks_who_is_asking(
+    session_factory, monkeypatch, method, path
+):
+    client = client_for(session_factory, monkeypatch)
+    review_id = start(session_factory)
+    with session_factory() as session:
+        finding_id = session.scalars(select(models.Finding.id)).first()
+
+    def refuse(*args):
+        raise HTTPException(404, "nope")
+
+    monkeypatch.setattr(engine_router, "require_review", refuse)
+    url = path.format(review=review_id, finding=finding_id)
+    assert getattr(client, method)(url).status_code == 404
 
 
 def test_stream_sends_named_events_in_order(session_factory, monkeypatch):
