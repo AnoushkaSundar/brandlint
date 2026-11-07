@@ -82,18 +82,19 @@ Alapan provides these. Anoushka mocks them under `api/mocks/` until they're buil
 |---|---|
 | `POST /engine/reviews {content_version_id, channel, rulebook_version}` → `{review_id}` | start an AI review; mock only from v3, the real engine starts through `app.clients.engine.start_review` |
 | `GET /engine/reviews/{id}/findings` (SSE) | stream findings; tier 0 first |
-| `POST /engine/reviews/{id}/recheck {changed_chunk_ids}` | incremental re-review |
+| `POST /engine/reviews/{id}/recheck {changed_chunk_ids}` | incremental re-review; mock only, not built, because the verdict cache already reuses unchanged chunks |
 | `GET /engine/reviews/{id}/chunks` → `[Chunk]` | parsed chunks for the review screen (v2) |
 | `POST /engine/findings/{id}/fix` → `FixSuggestion` | lazy fix, max 2 attempts |
 | `POST /engine/verdicts/{finding_id}/replay` → `{identical: bool, verdict, manifest}` | Replay |
-| `POST /engine/eval/gate {proposal}` → `{passed, precision, recall}` | regression gate |
-| `GET /memory/impact?fact_id=` → `[{content_id, state, claim_text}]` | impact analysis |
+| `POST /engine/eval/gate {proposal}` → `{passed, precision, recall}` | regression gate; admin only |
+| `GET /memory/impact?fact_id=` → `[{content_id, state, claim_text}]` | impact analysis; staff only |
 | `GET /memory/precedents?finding_id=` → `[Precedent]` | precedents |
-| `GET /memory/graph?root=` → `{nodes, edges}` | graph view (Neo4j-backed) |
+| `GET /memory/graph?root=` → `{nodes, edges}` | graph view, read from the Postgres edge table; staff only |
 | `GET /gateway/reviews/{id}/disclosure` → `{models: [], masked: {entity: count}, routes: []}` | disclosure panel |
 | `GET /gateway/reviews/{id}/masking-preview` → `{original, sent}` | masking preview |
-| `POST /governance/run` → `[Proposal]` | run the governance agent |
-| `GET /governance/spot-checks` → `[{content_id, review_id}]` | spot-check sample |
+| `POST /governance/run` → `[Proposal]` | run the governance agent and return every pending proposal; admin only |
+| `POST /governance/proposals/{id} {status: approved\|rejected}` → `[Proposal]` | an admin's decision; returns what's still pending and doesn't change the rule; admin only |
+| `GET /governance/spot-checks` → `[{content_id, review_id}]` | spot-check sample; staff only |
 
 Anoushka provides these, and Alapan reads them:
 
@@ -104,6 +105,10 @@ Anoushka provides these, and Alapan reads them:
 | `GET /workflow/decisions?since=` → `[Decision]` | decisions, for precedents and governance |
 | `GET /insights/signals` → `{override_rate_by_rule, vote_split_by_rule, gaps}` | input for the governance agent |
 | `POST /admin/gaps [Gap]` | the critic writes uncited findings to the guideline-gap log |
+
+Engine, gateway and Replay routes take the engine's review id and follow the content's read rule, so a person who can't open a piece gets a 404.
+
+`app.clients.engine` also provides `review_status(review_id, session)`, which returns `running`, `done`, `failed` or `unknown`. Only `done` means every check finished. `start_review` refuses a DOCX or PDF it can't open with a 422.
 
 The Python function `llm.call(purpose, data_class, rule_ids, payload) -> dict` in `app.gateway` is the **only** way to call an LLM. Until the gateway is real, the mock returns canned JSON that matches the requested schema.
 
