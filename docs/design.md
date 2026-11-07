@@ -49,7 +49,9 @@
 
 - At temperature 0, re-running the same prompt is pointless, so votes vary the judge instead.
 - **Default:** 3 pinned paraphrases of the rule's rubric, each with different anchor examples, on the same model.
-- **Legal and claims findings:** add a second model from a different provider, called through the gateway.
+- **Legal and claims findings:** add a second model from a different provider, called through the gateway. It's `gemini-3.5-flash-lite` on Google's free tier, so the policy table allows it for public data only.
+- Only model judgments are voted on. A number checked against the facts store is code, and a majority can't overturn it.
+- If the second model fails, voting continues without it. A rubric that fails counts against the finding.
 - The majority wins. Any split makes the finding UNSURE, and it goes to a reviewer.
 - Rubric variants and models are pinned and part of the cache key.
 - Repeated splits on a rule count as an "unclear guideline" signal.
@@ -112,7 +114,9 @@ There is no LLM streaming: verdicts are structured output, and we stream finding
 - **Impact analysis:** a changed or expired fact is traced back through CITES → Claim and CONTAINS → Content to every affected draft and published piece.
 - **Precedents:** only reviewer-confirmed overrides become precedents. Each is scoped to the same rule, the same channel and similar text, and expires when the rule's version changes.
 - **Build timing:** the graph is built at ingest and decision time, never during a review.
-- **Neo4j:** a read-only sync for the visual graph view.
+- **Graph view:** read from the Postgres edge table. The planned Neo4j sync wasn't built, because the view needs nothing it adds.
+- **Edges:** a projection, rebuilt from claims, findings and decisions when the graph is read. Only a piece's latest review counts.
+- **Precedent similarity:** text matching for now, because no embedding model is available through the proxy.
 
 ## Workflow
 
@@ -143,4 +147,8 @@ any → rejected (with reason)
 
 ## Cost
 
-About $0.02–0.06 per full review of a 1,000-word post with one image. Small models (Claude Haiku 5.5 or gpt-6-luna, $0.10 in / $0.50 out per million tokens) handle tier 1. A larger vision model handles images and fixes. All the software is open source.
+About $0.03 for the demo blog post on a first review, estimated from measured call costs; cached re-runs cost almost nothing.
+
+- **Tier 1 and fixes:** `claude-haiku-4-5`, $1 in and $5 out per million tokens. It's pinned rather than Haiku 5.5 because Anthropic rejects `temperature` on 5.5, and verdicts need temperature 0.
+- **Second voter:** `gemini-3.5-flash-lite`, free tier for the hackathon. On a paid tier it's $0.30 in and $2.50 out.
+- All the software is open source.
