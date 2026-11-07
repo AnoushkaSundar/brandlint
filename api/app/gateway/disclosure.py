@@ -49,15 +49,20 @@ def masking_preview(review_id: str, session: Session) -> dict[str, str]:
 
 def disclosure(review_id: str, session: Session) -> dict[str, Any]:
     _masked_chunks(review_id, session)
-    logged = session.scalars(
-        select(GatewayLog.model).where(
-            GatewayLog.review_id == review_id, GatewayLog.status == "ok"
+    calls = session.execute(
+        select(GatewayLog.model, GatewayLog.status).where(
+            GatewayLog.review_id == review_id
         )
     ).all()
+    answered = {model for model, status in calls if model and status == "ok"}
+    # A finding names the model it asked, even if the call failed. A model with no
+    # logged calls at all answered from the cache on an earlier run, so it counts.
+    only_failed = {model for model, _ in calls} - answered
     verdicts = session.scalars(
         select(Finding.models_used).where(Finding.review_id == review_id)
     ).all()
-    models = sorted({*filter(None, logged), *(m for used in verdicts for m in used or [])})
+    named = {model for used in verdicts for model in used or []}
+    models = sorted(answered | (named - only_failed))
     entities = session.scalars(
         select(TokenVault.entity).where(TokenVault.scope == review_id)
     ).all()
