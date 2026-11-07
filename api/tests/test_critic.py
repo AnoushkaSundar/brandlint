@@ -132,3 +132,35 @@ def test_code_beats_a_more_severe_ai_finding_on_the_same_source():
     ai = cand(severity="high", confidence=1.0)
     findings, _ = run(ai, code)
     assert [f.tier for f in findings] == [0]
+
+
+def on_chunk(chunk_id, verdict=Verdict.UNSURE):
+    return cand(verdict=verdict, spans=[{"chunk_id": chunk_id, "start": 0, "end": 5}])
+
+
+def gated(*candidates):
+    findings, _ = gate(
+        candidates,
+        known_rule_ids={"R1"},
+        known_fact_ids=set(),
+        blocked_chunks={"blocked"},
+    )
+    return findings
+
+
+def test_an_unsure_on_text_already_blocked_is_not_a_second_card():
+    assert gated(on_chunk("blocked")) == []
+
+
+def test_a_violation_on_blocked_text_stays():
+    assert len(gated(on_chunk("blocked", Verdict.VIOLATION))) == 1
+
+
+def test_an_unsure_elsewhere_stays():
+    assert len(gated(on_chunk("clean"))) == 1
+
+
+def test_an_unsure_spanning_blocked_and_clean_text_stays():
+    found = on_chunk("blocked")
+    found.spans = [*found.spans, {"chunk_id": "clean", "start": 0, "end": 5}]
+    assert len(gated(found)) == 1

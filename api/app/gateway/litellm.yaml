@@ -8,6 +8,11 @@ model_list:
     litellm_params:
       model: anthropic/claude-haiku-4-5
       api_key: os.environ/ANTHROPIC_API_KEY
+  # Restricted data. Runs in the ollama service, so it never leaves this machine.
+  - model_name: local-small
+    litellm_params:
+      model: ollama_chat/llama3.2:1b
+      api_base: http://ollama:11434
 
 general_settings:
   master_key: os.environ/LITELLM_MASTER_KEY

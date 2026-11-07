@@ -250,3 +250,27 @@ def test_overlaps_across_terms_keep_the_longest():
     ctx = _ctx(terms=[short, long], rules=[TERM_RULE_LOW, TERM_RULE_HIGH])
     findings = check_terms(_chunks("Tarnhollow Onramp."), ctx)
     assert [f.rule_id for f in findings] == [TERM_RULE_HIGH.id]
+
+
+def test_expired_fact_cites_the_brand_rule_as_well():
+    rule = Rule(
+        id="R-CLAIM-02", version=1, type="deterministic", clause_ref="§4.2",
+        text="Never publish a statistic after its valid-until date.",
+        severity="high", channel_scope=[], status="approved",
+    )
+    found = check_fact_expiry(
+        _chunks("Retention hit 80% last year."), _ctx(rules=[rule], facts=[EXPIRED_FACT])
+    )
+    assert (found[0].rule_id, found[0].fact_ids) == ("R-CLAIM-02", ["F1"])
+
+
+def test_hidden_text_cites_the_brand_rule_when_there_is_one():
+    rule = Rule(
+        id="R-INT-01", version=1, type="deterministic", clause_ref="§6.1",
+        text="Published content must not contain hidden text.",
+        severity="critical", channel_scope=[], status="approved",
+    )
+    chunks = _chunks("Secret")
+    chunks[0].style = {"color": "#fff", "background": "#fff"}
+    found = check_hidden_content(chunks, _ctx(rules=[rule]))
+    assert (found[0].rule_id, found[0].cited_text) == ("R-INT-01", rule.text)

@@ -15,11 +15,12 @@ from __future__ import annotations
 
 import re
 
-from app.contracts import CheckType, DataClass, Finding, Rule, RuleStatus, Severity
+from app.contracts import CheckType, DataClass, Finding, Rule, Severity
 from app.engine.checks.context import (
     _SEC_TEXT,
     SEC_CONFIDENTIAL,
     CheckContext,
+    brand_rule,
     make_finding,
 )
 from app.engine.chunking import ParsedChunk
@@ -29,15 +30,12 @@ _EXPIRED_PROTECTED_CITATION = "An approved fact that has expired (details restri
 
 
 def _confidentiality_rule(ctx: CheckContext) -> Rule | None:
-    """The brand rule against naming codenames. Rules carry no topic field, so
-    match on the wording; `check_confidential_terms` falls back to a built-in."""
-    for rule in ctx.rules:
-        if rule.status == RuleStatus.approved and "codename" in rule.text.lower():
-            return rule
-    return None
+    """The brand rule against naming codenames, or None for the built-in."""
+    return brand_rule(ctx, "codename")
 
 
 def check_fact_expiry(chunks: list[ParsedChunk], ctx: CheckContext) -> list[Finding]:
+    rule = brand_rule(ctx, "valid-until")
     findings: list[Finding] = []
     for fact in ctx.facts:
         if fact.valid_until is None or fact.valid_until >= ctx.as_of:
@@ -74,6 +72,7 @@ def check_fact_expiry(chunks: list[ParsedChunk], ctx: CheckContext) -> list[Find
                     ],
                     fact_ids=[fact.id],
                     sources=[fact.id],
+                    rule=rule,
                 )
             )
     return findings
