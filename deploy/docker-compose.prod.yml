@@ -1,0 +1,61 @@
+# Public demo, layered on the main compose file:
+#
+#   docker compose -f docker-compose.yml -f deploy/docker-compose.prod.yml up -d --build
+#
+# Only Caddy publishes ports. The database, LiteLLM (which holds the model keys) and
+# Presidio stay on the internal network. Docker bypasses the server's own firewall, so
+# the cloud firewall must also allow only 22, 80 and 443.
+services:
+  caddy:
+    image: caddy:2.10.2
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    environment:
+      SITE_HOST: ${SITE_HOST:?set SITE_HOST in .env, such as 203.0.113.7.sslip.io}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on: [web, api]
+
+  api:
+    restart: unless-stopped
+    ports: !reset []
+    environment:
+      WEB_ORIGIN: https://${SITE_HOST}
+      COOKIE_SECURE: "true"
+      USE_MOCK_ENGINE: "false"
+      USE_MOCK_GATEWAY: "false"
+      USE_MOCK_MEMORY: "false"
+    volumes:
+      - ./deploy:/deploy:ro
+
+  web:
+    restart: unless-stopped
+    ports: !reset []
+    build:
+      context: ./web
+      dockerfile: Dockerfile.prod
+      args:
+        NEXT_PUBLIC_API_URL: https://${SITE_HOST}/api
+        NEXT_PUBLIC_DEMO_MODE: "true"
+
+  db:
+    restart: unless-stopped
+    ports: !reset []
+
+  litellm:
+    restart: unless-stopped
+    ports: !reset []
+
+  presidio-analyzer:
+    restart: unless-stopped
+    ports: !reset []
+
+  presidio-anonymizer:
+    restart: unless-stopped
+    ports: !reset []
+
+volumes:
+  caddy_data:
+  caddy_config:

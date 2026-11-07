@@ -1,7 +1,9 @@
 import { Check } from "lucide-react";
 import type { Metadata } from "next";
 
+import { DemoLogins } from "@/components/demo-logins";
 import { LoginForm } from "@/components/login-form";
+import { DEMO_MODE } from "@/lib/demo";
 import { safeNextPath } from "@/lib/navigation";
 
 export const metadata: Metadata = { title: "Sign in" };
@@ -22,6 +24,7 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
           Use your work email and password.
         </p>
         <LoginForm next={safeNextPath(next)} />
+        {DEMO_MODE && <DemoLogins next={safeNextPath(next)} />}
       </div>
     </main>
   );

@@ -1,0 +1,16 @@
+# One address for the whole demo: the web app at /, the API at /api. The login cookie
+# is only sent to the site that set it, so both have to share an origin.
+{$SITE_HOST} {
+	encode gzip
+
+	handle_path /api/* {
+		reverse_proxy api:8000 {
+			# Findings stream over server-sent events, which must not be buffered.
+			flush_interval -1
+		}
+	}
+
+	handle {
+		reverse_proxy web:3000
+	}
+}
