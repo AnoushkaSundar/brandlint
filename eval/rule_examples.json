@@ -1,0 +1,28 @@
+[
+  {"rule_id": "R-TONE-01", "channel": "blog", "verdict": "PASS", "text": "New hires get a clear plan for their first week."},
+  {"rule_id": "R-TONE-01", "channel": "blog", "verdict": "PASS", "text": "Your manager will check in with you on Friday."},
+  {"rule_id": "R-TONE-01", "channel": "blog", "verdict": "PASS", "text": "We send every form before your start date, so day one is easy."},
+  {"rule_id": "R-TONE-01", "channel": "blog", "verdict": "PASS", "text": "The checklist shows what to do next and who can help."},
+  {"rule_id": "R-TONE-01", "channel": "blog", "verdict": "VIOLATION", "text": "Our holistic talent-activation ecosystem leverages synergistic touchpoints across the employee value chain."},
+  {"rule_id": "R-TONE-01", "channel": "blog", "verdict": "VIOLATION", "text": "We operationalise cross-functional enablement paradigms to actualise onboarding throughput."},
+  {"rule_id": "R-TONE-01", "channel": "blog", "verdict": "VIOLATION", "text": "Stakeholders can ideate on bandwidth-optimised deliverables within the human-capital vertical."},
+  {"rule_id": "R-TONE-01", "channel": "blog", "verdict": "VIOLATION", "text": "This best-of-breed solutioning framework drives paradigm-shifting workforce transformation at scale."},
+
+  {"rule_id": "R-TONE-02", "channel": "blog", "verdict": "PASS", "text": "A good first week helps people feel settled."},
+  {"rule_id": "R-TONE-02", "channel": "blog", "verdict": "PASS", "text": "Some new hires leave in their first year, and a clear plan can help."},
+  {"rule_id": "R-TONE-02", "channel": "blog", "verdict": "PASS", "text": "If you'd like to learn more, our guide covers the basics."},
+  {"rule_id": "R-TONE-02", "channel": "blog", "verdict": "PASS", "text": "Missing a form can delay payroll, so we remind you before the deadline."},
+  {"rule_id": "R-TONE-02", "channel": "blog", "verdict": "VIOLATION", "text": "Act now, or your best people will walk out the door!"},
+  {"rule_id": "R-TONE-02", "channel": "blog", "verdict": "VIOLATION", "text": "Every day you wait, your company is bleeding talent. Don't let it destroy you."},
+  {"rule_id": "R-TONE-02", "channel": "blog", "verdict": "VIOLATION", "text": "Hurry! This is your last chance before your competitors crush you."},
+  {"rule_id": "R-TONE-02", "channel": "blog", "verdict": "VIOLATION", "text": "If you ignore onboarding, you are terrifyingly close to losing everything."},
+
+  {"rule_id": "R-TONE-03", "channel": "linkedin", "verdict": "PASS", "text": "I've been thinking about what makes a first week feel welcoming."},
+  {"rule_id": "R-TONE-03", "channel": "linkedin", "verdict": "PASS", "text": "A small thing we learned this year: a note from your manager goes a long way."},
+  {"rule_id": "R-TONE-03", "channel": "linkedin", "verdict": "PASS", "text": "We're glad to share what our customers told us about their first month."},
+  {"rule_id": "R-TONE-03", "channel": "linkedin", "verdict": "PASS", "text": "What's one thing that helped you settle in at a new job?"},
+  {"rule_id": "R-TONE-03", "channel": "linkedin", "verdict": "VIOLATION", "text": "STOP losing new hires! BOOK YOUR DEMO TODAY!!!"},
+  {"rule_id": "R-TONE-03", "channel": "linkedin", "verdict": "VIOLATION", "text": "THIS CHANGES EVERYTHING!!! YOU NEED THIS RIGHT NOW!!!"},
+  {"rule_id": "R-TONE-03", "channel": "linkedin", "verdict": "VIOLATION", "text": "HUGE NEWS!!! Smash that button and BUY before it's GONE!!!"},
+  {"rule_id": "R-TONE-03", "channel": "linkedin", "verdict": "VIOLATION", "text": "Still doing onboarding the old way?! WAKE UP and SIGN UP NOW!!!"}
+]
