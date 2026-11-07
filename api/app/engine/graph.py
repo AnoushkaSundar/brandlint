@@ -20,6 +20,7 @@ from app.clients.gateway import llm_call
 from app.contracts import Finding, Gap
 from app.engine import critic
 from app.engine.agents import claims as claims_agent
+from app.engine.agents import document as document_pass
 from app.engine.agents import language
 from app.engine.agents.language import ClassifyFn
 from app.engine.cache import VerdictCache
@@ -78,6 +79,31 @@ def gateway_classify(session_factory: Callable[[], Session]) -> ClassifyFn:
                 session.commit()
 
     return classify
+
+
+def gateway_fix(session_factory: Callable[[], Session]) -> ClassifyFn:
+    """Like `gateway_classify`, logged as a fix. Fixes never decide pass or fail."""
+
+    def fix(
+        data_class: str,
+        rule_ids: list[str],
+        payload: dict[str, Any],
+        review_id: str,
+    ) -> dict[str, Any]:
+        with session_factory() as session:
+            try:
+                return llm_call(
+                    "fix",
+                    data_class,
+                    rule_ids,
+                    payload,
+                    session=session,
+                    review_id=review_id,
+                )
+            finally:
+                session.commit()
+
+    return fix
 
 
 def flagged_chunk_ids(chunks: list[ParsedChunk], ctx: CheckContext) -> set[str]:
@@ -145,7 +171,16 @@ def build_review_graph(
         return {"candidates": [*found, *judged]}
 
     def document(state: ReviewState) -> dict:
-        return {"candidates": []}  # Tone-drift pass lands in block 5.
+        chunks, ctx = state["chunks"], state["ctx"]
+        found = document_pass.tone_drift(
+            chunks,
+            ctx,
+            classify,
+            flagged=flagged_chunk_ids(chunks, ctx),
+            model=model,
+            cache=cache,
+        )
+        return {"candidates": [found] if found else []}
 
     def critic_node(state: ReviewState) -> dict:
         ctx = state["ctx"]
