@@ -1,12 +1,8 @@
-import {
-  PlaceholderPage,
-  placeholderMetadata,
-} from "@/components/placeholder-page";
+import { GraphScreen } from "@/components/graph-screen";
+import { placeholderMetadata } from "@/components/placeholder-page";
 
-const HREF = "/graph";
-
-export const metadata = placeholderMetadata(HREF);
+export const metadata = placeholderMetadata("/graph");
 
 export default function Page() {
-  return <PlaceholderPage href={HREF} />;
+  return <GraphScreen />;
 }
