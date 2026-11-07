@@ -6,6 +6,7 @@ import { type FormEvent, useEffect, useState } from "react";
 
 import { useAuth } from "@/components/auth-provider";
 import { ContentHistory } from "@/components/content-history";
+import { DisclosurePanel } from "@/components/disclosure-panel";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -177,6 +178,10 @@ export function ContentDetail({ id }: { id: string }) {
         >
           {error}
         </p>
+      )}
+
+      {content.latest_review && (
+        <DisclosurePanel reviewId={content.latest_review.engine_review_id} />
       )}
 
       <section aria-labelledby="latest-heading" className="mt-8">

@@ -361,3 +361,51 @@ def approve(session: Session, rule_ids: Sequence[str], actor: User) -> int:
         {"version": version},
     )
     return version
+
+
+def draft_from_proposal(
+    session: Session, rule_id: str, suggested: str, actor: User
+) -> str | None:
+    """Turns an approved amendment into a draft of the rule it rewrites.
+
+    The draft still needs an admin's approval in the rulebook, like any other: a
+    proposal never changes a rule in force. Returns the draft's rule id, or None when
+    the rule isn't in force any more. The caller commits.
+    """
+    if rule_id not in _in_force(session):
+        return None
+    current = session.scalar(
+        select(RuleRow)
+        .where(RuleRow.id == rule_id, RuleRow.status == RuleStatus.approved.value)
+        .order_by(RuleRow.version.desc())
+        .limit(1)
+    )
+    existing = session.scalar(
+        select(RuleRow).where(
+            RuleRow.id == rule_id, RuleRow.status == RuleStatus.draft.value
+        )
+    )
+    if existing is not None:
+        before = _as_rule(existing).model_dump(mode="json")
+        existing.text = suggested
+    else:
+        before = None
+        session.add(
+            RuleRow(
+                id=rule_id,
+                version=next_version(session),
+                status=RuleStatus.draft.value,
+                type=current.type,
+                text=suggested,
+                clause_ref=current.clause_ref,
+                severity=current.severity,
+                channel_scope=current.channel_scope,
+                supersedes=current.supersedes,
+                required_text=current.required_text,
+            )
+        )
+    session.flush()
+    _audit(
+        session, actor, "rule:draft_from_proposal", rule_id, before, {"text": suggested}
+    )
+    return rule_id

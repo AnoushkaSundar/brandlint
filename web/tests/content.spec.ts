@@ -401,3 +401,59 @@ test.describe("accessibility (WCAG 2.2 AA)", () => {
     await expectNoAccessibilityViolations(page);
   });
 });
+
+test.describe("trust", () => {
+  test("shows the models used and what they received", async ({ page }) => {
+    await signInAs(page, "creator");
+    await stubDetail(page, { ...DETAIL, latest_review: REVIEW });
+    await page.route(
+      `**/stub-api/gateway/reviews/${REVIEW.engine_review_id}/disclosure`,
+      (route) =>
+        route.fulfill({
+          json: {
+            models: ["claude-haiku-4-5"],
+            masked: { PRODUCT: 1 },
+            routes: ["cloud"],
+          },
+        }),
+    );
+    await page.route(
+      `**/stub-api/gateway/reviews/${REVIEW.engine_review_id}/masking-preview`,
+      (route) =>
+        route.fulfill({
+          json: {
+            original: "Meet Bluewren.",
+            sent: "Meet [PRODUCT_1].",
+          },
+        }),
+    );
+    await page.goto("/content/c1");
+
+    await page.getByText("What the models saw").click();
+
+    const main = page.locator("main");
+    await expect(main).toContainText("claude-haiku-4-5");
+    await expect(main).toContainText("1 × PRODUCT");
+    await expect(main).toContainText("Meet [PRODUCT_1].");
+    await expect(main).toContainText("Meet Bluewren.");
+    await expectNoAccessibilityViolations(page);
+  });
+
+  test("a queued re-review is shown with a way to review again", async ({
+    page,
+  }) => {
+    await signInAs(page, "creator");
+    await stubDetail(page, {
+      ...DETAIL,
+      state: "resolving",
+      latest_review: REVIEW,
+      rereview: { fact_id: "F-002", requested_at: "2026-11-07T12:00:00Z" },
+    });
+    await page.goto("/content/c1");
+
+    await expect(page.locator("main")).toContainText("F-002, has changed");
+    await expect(
+      page.getByRole("button", { name: "Review again" }),
+    ).toBeVisible();
+  });
+});

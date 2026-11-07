@@ -6,7 +6,8 @@ The API tests call the routes directly, because the UI hiding a fact proves noth
 from datetime import UTC, date, datetime
 
 import app.content.models
-import app.workflow.models  # noqa: F401
+import app.governance.models
+import app.workflow.models
 import pytest
 from app.admin.brand import list_facts, list_terms, visible_facts
 from app.admin.gaps import save_gaps
@@ -814,3 +815,108 @@ def test_a_request_is_audited(affected_piece, client_for, seeded):
     ).one()
     assert entry.target_id == affected_piece
     assert entry.after == {"fact_id": "F-002"}
+
+
+
+# Approved proposals
+
+
+def test_an_approved_proposal_becomes_a_draft_not_a_rule(seeded):
+    from app.admin.ingest import draft_from_proposal
+
+    admin = User(
+        email="owner@example.com", name="owner", role=Role.admin.value, password_hash="x"
+    )
+    seeded.add(admin)
+    seeded.flush()
+    before = {rule.id: rule.text for rule in rulebook_at(seeded)}
+
+    assert draft_from_proposal(seeded, "R-TONE-02", "Stay calm. Facts are fine.", admin) == "R-TONE-02"
+    seeded.commit()
+
+    assert {rule.id: rule.text for rule in rulebook_at(seeded)} == before
+    draft = seeded.scalars(
+        select(RuleRow).where(RuleRow.id == "R-TONE-02", RuleRow.status == "draft")
+    ).one()
+    assert draft.text == "Stay calm. Facts are fine."
+    assert draft.version == 2
+
+
+def test_a_proposal_for_a_retired_rule_makes_no_draft(seeded):
+    from app.admin.ingest import draft_from_proposal
+
+    admin = User(
+        email="owner@example.com", name="owner", role=Role.admin.value, password_hash="x"
+    )
+    seeded.add(admin)
+    seeded.flush()
+
+    assert draft_from_proposal(seeded, "R-GONE", "Anything", admin) is None
+
+
+def proposal_client(session, role):
+    from app.governance.router import _routes
+
+    api = FastAPI()
+    api.include_router(_routes(), prefix="/governance")
+
+    def override_session():
+        yield session
+
+    api.dependency_overrides[get_session] = override_session
+    user = User(
+        email=f"g-{role.value}@example.com",
+        name=role.value,
+        role=role.value,
+        password_hash="x",
+    )
+    session.add(user)
+    session.add(
+        app.governance.models.Proposal(
+            id="p1",
+            rule_id="R-TONE-02",
+            kind="amendment",
+            current="Stay calm.",
+            suggested="Stay calm. Facts are fine.",
+            evidence={"count": 3, "examples": []},
+            eval={"passed": True, "precision": 0.9, "recall": 0.9},
+            status="pending",
+        )
+    )
+    session.commit()
+    client = TestClient(api)
+    client.cookies.set(SESSION_COOKIE, create_token(user))
+    return client
+
+
+def test_an_admin_lists_and_approves_a_proposal_into_a_draft(seeded):
+    client = proposal_client(seeded, Role.admin)
+
+    assert [p["id"] for p in client.get("/governance/proposals").json()] == ["p1"]
+    response = client.post("/governance/proposals/p1", json={"status": "approved"})
+
+    assert response.json() == []
+    draft = seeded.scalars(
+        select(RuleRow).where(RuleRow.id == "R-TONE-02", RuleRow.status == "draft")
+    ).one()
+    assert draft.text == "Stay calm. Facts are fine."
+
+
+def test_a_rejected_proposal_makes_no_draft(seeded):
+    client = proposal_client(seeded, Role.admin)
+
+    client.post("/governance/proposals/p1", json={"status": "rejected"})
+
+    drafts = select(RuleRow).where(RuleRow.id == "R-TONE-02", RuleRow.status == "draft")
+    assert seeded.scalars(drafts).all() == []
+
+
+@pytest.mark.parametrize("role", NON_READERS + [Role.legal])
+def test_only_an_admin_sees_or_decides_proposals(seeded, role):
+    client = proposal_client(seeded, role)
+
+    assert client.get("/governance/proposals").status_code == 403
+    assert (
+        client.post("/governance/proposals/p1", json={"status": "approved"}).status_code
+        == 403
+    )
