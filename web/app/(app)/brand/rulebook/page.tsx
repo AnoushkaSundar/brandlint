@@ -1,12 +1,8 @@
-import {
-  PlaceholderPage,
-  placeholderMetadata,
-} from "@/components/placeholder-page";
+import { RulebookScreen } from "@/components/rulebook-screen";
+import { placeholderMetadata } from "@/components/placeholder-page";
 
-const HREF = "/brand/rulebook";
-
-export const metadata = placeholderMetadata(HREF);
+export const metadata = placeholderMetadata("/brand/rulebook");
 
 export default function Page() {
-  return <PlaceholderPage href={HREF} />;
+  return <RulebookScreen />;
 }
