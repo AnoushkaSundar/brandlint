@@ -88,7 +88,7 @@ Every demo account uses the password `brandlint-demo`: `admin@`, `agency@`, `rev
 - **Insights:** there's no filter by AI tool, and reviewers can't yet mark missed issues on a spot-check. Neither is in the demo script.
 - **Browser tests:** each spec passes on its own. Run with four workers, the full Playwright suite once timed out on a few shell tests under load, and passed on a rerun with two (`npx playwright test --workers=2`).
 - **Hydration warning:** the Next.js dev overlay showed one, from a browser extension adding attributes to `<html>` or `<body>`. This PR adds `suppressHydrationWarning` to those two tags only.
-- **`R-REQ-02`:** it comes out of ingest as `must_include` with no `required_text`, because the guideline doesn't quote the exact words. `app/engine/checks/required.py` skips such a rule, so nothing checks it. Give it a `required_text` on the Rulebook screen if it should count.
+- **`R-REQ-02`:** it comes out of ingest as `must_include` with no `required_text`, because the guideline doesn't quote the exact words. `app/engine/checks/required.py` skips such a rule, so nothing checks it. The Rulebook screen can't set `required_text` yet. While the rule is still a draft, `PUT /admin/rules/R-REQ-02/draft` with a `required_text` does it.
 - **Neo4j:** sync isn't part of the demo. The graph view reads the Postgres edge table.
 
 ## Left to do
