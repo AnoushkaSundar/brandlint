@@ -36,8 +36,8 @@ export function ScreenHeader({
 }) {
   return (
     <>
-      <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
-      <p className="mt-2 text-muted-foreground">{summary}</p>
+      <h1 className="text-3xl font-semibold tracking-tight">{title}</h1>
+      <p className="mt-2 max-w-3xl text-base text-muted-foreground">{summary}</p>
     </>
   );
 }

@@ -1,5 +1,7 @@
 import { AppSidebar } from "@/components/app-sidebar";
 import { AuthProvider } from "@/components/auth-provider";
+import { DemoTour } from "@/components/demo-tour";
+import { DemoSwitcher } from "@/components/demo-switcher";
 import {
   SidebarInset,
   SidebarProvider,
@@ -7,6 +9,7 @@ import {
 } from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { UserMenu } from "@/components/user-menu";
+import { DEMO_MODE } from "@/lib/demo";
 
 // Signed-in shell. /login sits outside this route group.
 export default function AppLayout({ children }: LayoutProps<"/">) {
@@ -22,14 +25,22 @@ export default function AppLayout({ children }: LayoutProps<"/">) {
         <SidebarProvider>
           <AppSidebar />
           <SidebarInset>
-            <header className="flex h-14 shrink-0 items-center justify-between gap-2 border-b px-4">
+            <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center justify-between gap-2 border-b bg-background/90 px-4 backdrop-blur">
               <SidebarTrigger />
-              <UserMenu />
+              <div className="flex flex-wrap items-center justify-end gap-3">
+                {DEMO_MODE && (
+                  <>
+                    <DemoTour />
+                    <DemoSwitcher />
+                  </>
+                )}
+                <UserMenu />
+              </div>
             </header>
             <main
               id="main-content"
               tabIndex={-1}
-              className="flex-1 p-6 outline-none"
+              className="flex-1 bg-muted/40 p-6 outline-none md:p-8"
             >
               {children}
             </main>

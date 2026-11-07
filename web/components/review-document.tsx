@@ -67,7 +67,7 @@ export function ReviewDocument({
   const highlights = highlightsByChunk(findings);
 
   return (
-    <div className="flex flex-col gap-4 rounded-lg border p-5 leading-relaxed">
+    <div className="flex flex-col gap-4 rounded-xl border bg-card p-6 leading-relaxed shadow-sm">
       {chunks.map((chunk) => {
         if (chunk.kind === "image") {
           return imagePath ? (

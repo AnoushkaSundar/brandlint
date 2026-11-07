@@ -3,10 +3,10 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
-import { SEVERITY_MARK } from "@/components/review-document";
+import { SEVERITY_EDGE, SeverityBadge } from "@/components/severity-badge";
 import { ApiError } from "@/lib/api";
 import { channelLabel } from "@/lib/content";
-import { CHECK_LABELS, SEVERITY_LABELS } from "@/lib/findingLabels";
+import { CHECK_LABELS } from "@/lib/findingLabels";
 import { getQueue, type Queue, type QueueItem } from "@/lib/reviewDesk";
 import { cn } from "@/lib/utils";
 
@@ -19,16 +19,14 @@ const KIND_LABELS: Record<QueueItem["kind"], string> = {
 
 function Item({ item }: { item: QueueItem }) {
   return (
-    <li className="flex flex-col gap-1 rounded-lg border p-3 text-sm">
+    <li
+      className={cn(
+        "flex flex-col gap-2 rounded-xl border border-l-4 bg-card p-4 text-sm shadow-sm",
+        SEVERITY_EDGE[item.severity],
+      )}
+    >
       <div className="flex flex-wrap items-center gap-2">
-        <span
-          className={cn(
-            "rounded-sm px-1.5 font-medium text-foreground underline decoration-2 underline-offset-2",
-            SEVERITY_MARK[item.severity],
-          )}
-        >
-          {SEVERITY_LABELS[item.severity]}
-        </span>
+        <SeverityBadge severity={item.severity} />
         <span className="font-medium">{KIND_LABELS[item.kind]}</span>
         <span className="text-muted-foreground">
           {CHECK_LABELS[item.check]}

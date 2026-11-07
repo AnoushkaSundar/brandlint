@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { CommentThread } from "@/components/comment-thread";
 import { FindingCard } from "@/components/finding-card";
 import { ReviewDocument } from "@/components/review-document";
+import { SeverityBadge } from "@/components/severity-badge";
 import { WorkflowBar } from "@/components/workflow-bar";
 import { getRulebook } from "@/lib/admin";
 import { ApiError } from "@/lib/api";
@@ -15,7 +16,7 @@ import {
   startReview,
   versionFilePath,
 } from "@/lib/content";
-import type { Chunk, ContentState, Finding } from "@/lib/contracts";
+import type { Chunk, ContentState, Finding, Severity } from "@/lib/contracts";
 import { getChunks, streamFindings } from "@/lib/engineClient";
 import { trackProgress, UNSETTLED } from "@/lib/findingLabels";
 import { sortFindings } from "@/lib/highlights";
@@ -33,6 +34,7 @@ import {
   getBoard,
   moveContent,
 } from "@/lib/workflow";
+import { cn } from "@/lib/utils";
 
 type StreamState = "streaming" | "done" | "error";
 
@@ -42,6 +44,73 @@ const RETRY_DELAY_MS = 1000;
 
 function findingCount(count: number): string {
   return count === 1 ? "1 finding" : `${count} findings`;
+}
+
+const SEVERITIES: readonly Severity[] = ["critical", "high", "medium", "low"];
+const GROUP_HINTS: Record<Severity, string> = {
+  critical: "Only a reviewer can clear these.",
+  high: "Only a reviewer can clear these.",
+  medium: "Fix them, or override with a reason a reviewer confirms.",
+  low: "Fix them, or override with a reason a reviewer confirms.",
+};
+
+/** What's left to do on this piece, at a glance. */
+function Summary({
+  findings,
+  standings,
+}: {
+  findings: readonly Finding[];
+  standings: ReadonlyMap<string, FindingStanding>;
+}) {
+  if (findings.length === 0) return null;
+  const open = findings.filter((finding) =>
+    UNSETTLED.includes(standings.get(finding.id)?.status ?? "open"),
+  );
+  const settled = findings.length - open.length;
+  const unsure = open.filter((finding) => finding.verdict === "UNSURE").length;
+  return (
+    <div className="mt-3 rounded-xl border bg-card p-4 shadow-sm">
+      <div className="flex items-baseline justify-between gap-3">
+        <p className="font-semibold">
+          {open.length === 0
+            ? "Every finding is settled"
+            : `${findingCount(open.length)} to settle`}
+        </p>
+        <p className="text-sm text-muted-foreground">
+          {settled} of {findings.length} settled
+        </p>
+      </div>
+      <div
+        className="mt-2 h-2 overflow-hidden rounded-full bg-muted"
+        role="progressbar"
+        aria-label="Findings settled"
+        aria-valuemin={0}
+        aria-valuemax={findings.length}
+        aria-valuenow={settled}
+      >
+        <div
+          className="h-2 rounded-full bg-emerald-600 transition-all"
+          style={{ width: `${(settled / findings.length) * 100}%` }}
+        />
+      </div>
+      <ul className="mt-3 flex flex-wrap gap-2 text-sm">
+        {SEVERITIES.map((severity) => {
+          const count = open.filter((finding) => finding.severity === severity).length;
+          return count > 0 ? (
+            <li key={severity} className="flex items-center gap-1">
+              <SeverityBadge severity={severity} />
+              <span className="font-medium">{count}</span>
+            </li>
+          ) : null;
+        })}
+        {unsure > 0 && (
+          <li className="rounded-full bg-violet-100 px-2 py-0.5 text-xs font-semibold text-violet-900">
+            {unsure} the AI was unsure about
+          </li>
+        )}
+      </ul>
+    </div>
+  );
 }
 
 function Findings({
@@ -84,18 +153,28 @@ function Findings({
         </p>
       </div>
 
-      <ul aria-label="Progress" className="mt-2 flex flex-wrap gap-x-4 text-sm">
+      <ul aria-label="Progress" className="mt-2 flex flex-wrap gap-2 text-xs">
         {trackProgress(findings, streamState === "done").map((track) => (
-          <li key={track.label}>
+          <li
+            key={track.label}
+            className={cn(
+              "rounded-full px-2 py-0.5",
+              track.done ? "bg-emerald-50 text-emerald-900" : "bg-muted text-muted-foreground",
+            )}
+          >
+            {track.done ? "✓ " : ""}
             {track.label}: {track.count}
-            <span className="text-muted-foreground">
+            <span className="sr-only">
               {track.done && ", done"}
               {!track.done &&
                 (streamState === "error" ? ", stopped" : ", checking")}
             </span>
+            {!track.done && (streamState === "error" ? " · stopped" : " · checking")}
           </li>
         ))}
       </ul>
+
+      <Summary findings={findings} standings={standings} />
 
       {streamState === "error" && (
         <p
@@ -112,24 +191,38 @@ function Findings({
         </p>
       )}
 
-      <ol className="mt-3 flex flex-col gap-2">
-        {findings.map((finding) => (
-          <li key={finding.id}>
-            <FindingCard
-              contentId={contentId}
-              finding={finding}
-              selected={finding.id === selectedId}
-              clauseRefs={clauseRefs}
-              standing={standings.get(finding.id)}
-              comments={comments}
-              versionId={versionId}
-              onSelect={onSelect}
-              onDecide={onDecide}
-              onComment={onComment}
-            />
-          </li>
-        ))}
-      </ol>
+      {SEVERITIES.map((severity) => {
+        const group = findings.filter((finding) => finding.severity === severity);
+        if (group.length === 0) return null;
+        return (
+          <section key={severity} aria-label={`${severity} findings`} className="mt-5">
+            <div className="flex flex-wrap items-baseline gap-x-2">
+              <h3 className="font-semibold capitalize">
+                {severity} · {group.length}
+              </h3>
+              <p className="text-xs text-muted-foreground">{GROUP_HINTS[severity]}</p>
+            </div>
+            <ol className="mt-2 flex flex-col gap-3">
+              {group.map((finding) => (
+                <li key={finding.id}>
+                  <FindingCard
+                    contentId={contentId}
+                    finding={finding}
+                    selected={finding.id === selectedId}
+                    clauseRefs={clauseRefs}
+                    standing={standings.get(finding.id)}
+                    comments={comments}
+                    versionId={versionId}
+                    onSelect={onSelect}
+                    onDecide={onDecide}
+                    onComment={onComment}
+                  />
+                </li>
+              ))}
+            </ol>
+          </section>
+        );
+      })}
     </>
   );
 }
