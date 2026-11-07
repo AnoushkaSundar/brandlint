@@ -920,3 +920,112 @@ def test_only_an_admin_sees_or_decides_proposals(seeded, role):
         client.post("/governance/proposals/p1", json={"status": "approved"}).status_code
         == 403
     )
+
+
+
+# Rule ids from the guideline
+
+
+def test_rule_ids_come_from_the_guideline_not_the_model(
+    empty_rulebook, client_for, guideline, monkeypatch
+):
+    from mocks.gateway import _draft_rules
+
+    def without_ids(*args, **kwargs):
+        reply = _draft_rules()
+        for rule in reply["rules"]:
+            rule.pop("id")
+        return reply
+
+    monkeypatch.setattr("app.admin.ingest.llm_call", without_ids)
+    admin = client_for(Role.admin)
+
+    upload(admin, guideline)
+
+    ids = {rule["clause_ref"]: rule["id"] for rule in admin.get("/admin/rules/drafts").json()["drafts"]}
+    assert ids["§2.1"] == "R-TONE-01"
+    assert ids["§3.3"] == "R-TERM-03"
+    assert ids["§5.1"] == "R-REQ-01"
+    assert ids["§6.1"] == "R-VIS-01"
+    assert ids["§7.1"] == "R-INT-01"
+
+
+def test_section_codes_fall_back_to_the_heading():
+    from app.admin.ingest import clause_id, section_codes
+
+    codes = section_codes("1. How to use this guide\n8. Channel notes\n")
+
+    assert clause_id("§8.2", codes) == "R-CHANN-02"
+    assert clause_id("§12.1", codes) == "R-S12-01"
+    assert clause_id("Appendix A", codes) is None
+
+
+
+# Skipped clauses and the conflict check
+
+
+def _replies(monkeypatch, *replies):
+    calls = []
+
+    def fake(purpose, data_class, rule_ids, payload, *, session):
+        calls.append(payload["messages"][1]["content"])
+        return replies[min(len(calls), len(replies)) - 1]
+
+    monkeypatch.setattr("app.admin.ingest.llm_call", fake)
+    return calls
+
+
+def _without(reply, clause):
+    return {
+        "rules": [rule for rule in reply["rules"] if rule["clause_ref"] != clause],
+        "conflicts": [],
+    }
+
+
+def test_a_skipped_clause_is_asked_for_again(empty_rulebook, client_for, guideline, monkeypatch):
+    from mocks.gateway import _draft_rules
+
+    full = _draft_rules()
+    calls = _replies(monkeypatch, _without(full, "§2.4"), full, full)
+
+    job = upload(client_for(Role.admin), guideline).json()
+
+    assert "R-TONE-04" in job["result"]["rules"]
+    assert job["result"]["missed_clauses"] == []
+    assert "2.4 Use contractions" in calls[1]
+    assert "§2.1" not in calls[1]
+
+
+def test_the_conflict_check_finds_what_the_first_reply_missed(
+    empty_rulebook, client_for, guideline, monkeypatch
+):
+    from mocks.gateway import _draft_rules
+
+    full = _draft_rules()
+    _replies(monkeypatch, {**full, "conflicts": []}, full)
+
+    job = upload(client_for(Role.admin), guideline).json()
+
+    assert job["result"]["conflicts"] == [["R-TERM-04", "R-TONE-04"]]
+    assert job["result"]["conflict_check"] == "done"
+
+
+def test_a_clause_still_missing_is_reported(empty_rulebook, client_for, guideline, monkeypatch):
+    from mocks.gateway import _draft_rules
+
+    partial = _without(_draft_rules(), "§2.4")
+    _replies(monkeypatch, partial, {"rules": [], "conflicts": []}, partial)
+
+    job = upload(client_for(Role.admin), guideline).json()
+
+    assert job["result"]["missed_clauses"] == ["§2.4"]
+
+
+def test_clause_numbers_are_normalised():
+    from app.admin.ingest import normal_clause, numbered_clauses
+
+    assert normal_clause("2.4") == normal_clause("§ 2.4") == "§2.4"
+    assert list(numbered_clauses("Intro\n2.1   Write plainly.\n2.2 Stay calm.\n")) == [
+        "§2.1",
+        "§2.2",
+    ]

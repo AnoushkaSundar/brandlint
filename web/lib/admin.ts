@@ -18,7 +18,14 @@ export type IngestJob = {
   id: string;
   status: "pending" | "done" | "failed";
   error: string | null;
-  result: { version: number; rules: string[]; conflicts: string[][] } | null;
+  result: {
+    version: number;
+    rules: string[];
+    conflicts: string[][];
+    // Numbered clauses the model didn't turn into a rule, even when asked again.
+    missed_clauses?: string[];
+    conflict_check?: "done" | "failed";
+  } | null;
 };
 
 export type Drafts = {

@@ -209,8 +209,20 @@ export function RulebookScreen() {
         setError(job.error ?? "The guideline couldn't be read.");
       } else {
         const count = job.result?.rules.length ?? 0;
+        const missed = job.result?.missed_clauses ?? [];
+        const warnings = [
+          missed.length
+            ? `No rule was drafted for ${missed.join(", ")}. Read the guideline again, or add ${missed.length === 1 ? "it" : "them"} by hand.`
+            : "",
+          job.result?.conflict_check === "failed"
+            ? "The check for contradicting rules couldn't run, so review the drafts for conflicts yourself."
+            : "",
+        ].filter(Boolean);
         setNotice(
-          `Read ${count} rules from ${file.name}. Nothing is live until you approve it.`,
+          [
+            `Read ${count} rules from ${file.name}. Nothing is live until you approve it.`,
+            ...warnings,
+          ].join(" "),
         );
         setSelected(new Set());
       }
