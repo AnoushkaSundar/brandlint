@@ -23,6 +23,18 @@ python demo/build_demo.py
 | `pieces/` | The three demo pieces, each with a `.chunks.json` file |
 | `findings/` | Mock findings for each piece, as `Finding` objects |
 
+## Demo history (demo step 8)
+
+The governance agent proposes a change only after a reviewer has confirmed at least three overrides of the same judgment rule. A fresh demo has one, so `seed_history.py` runs four short pieces, titled "Demo history", through the real workflow: the engine reviews each one, and a reviewer overrides its §2.2 tone finding with a reason. Nothing is written to the database directly, and the fourth piece is a spare in case a verdict changes.
+
+It needs an approved rulebook, so run it right after demo step 1, while you show step 2:
+
+```bash
+docker compose exec api python /demo/seed_history.py
+```
+
+It skips pieces whose override is already confirmed, so it's safe to run again.
+
 ## Rulebook decisions
 
 - **Conflicting rules:** §2.4 says to use contractions and §3.4 says never to. The demo admin keeps §2.4, so `R-TERM-04` stays a draft in `rules.json`.
@@ -41,7 +53,7 @@ python demo/build_demo.py
 | Claim across two paragraphs | "cut onboarding time" ... "by 80%" | §4.1 and `F-002`, high. The approved figure is 38% |
 | Confidential codename | "Bluewren" | §4.5, critical |
 | Term to override (demo step 5) | "newbies" | §3.3, low |
-| Item for a reviewer (demo step 6) | "quietly start looking elsewhere" | §2.2, medium, UNSURE |
+| Item for a reviewer (demo step 6) | "quietly start looking elsewhere. It is a risk worth taking seriously." | §2.2, UNSURE. The second sentence makes it borderline: the real model returned UNSURE in three runs with the cache cleared |
 
 ### `pieces/linkedin-post.html`
 

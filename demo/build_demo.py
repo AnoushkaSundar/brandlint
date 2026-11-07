@@ -380,7 +380,7 @@ BLOG = [
         "blog-p1",
         "Starting a new job is a strange mix of excitement and paperwork. For most "
         "newbies, the first week decides whether they feel welcome or quietly start "
-        "looking elsewhere.",
+        "looking elsewhere. It is a risk worth taking seriously.",
     ),
     (
         "blog-p2",
