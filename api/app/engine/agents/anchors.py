@@ -95,3 +95,67 @@ ANCHORS: dict[str, list[dict[str, str]]] = {
         },
     ],
 }
+
+# Voting. Each variant judges the same rule from another angle, with its own examples.
+# Part of the cache key, so bump VOTE_VERSION when any of this changes.
+VOTE_VERSION = "vote-v1"
+VARIANTS = (1, 2)
+RUBRICS: dict[int, str] = {
+    1: "Judge the wording: flag it only if the words themselves break the rule.",
+    2: "Judge the effect: flag it only if an ordinary reader would take away what the "
+    "rule forbids.",
+}
+VOTE_ANCHORS: dict[str, dict[int, list[dict[str, str]]]] = {
+    "R-CLAIM-03": {
+        1: [
+            {
+                "verdict": "PASS",
+                "text": "Our checklist can help new hires find their feet.",
+                "why": "'Can help' offers a possibility, not a promise.",
+            },
+            {
+                "verdict": "VIOLATION",
+                "text": "Every customer always sees results in week one.",
+                "why": "'Every' and 'always' make it an absolute claim.",
+            },
+        ],
+        2: [
+            {
+                "verdict": "PASS",
+                "text": "Teams told us the first week felt calmer.",
+                "why": "Reports what people said, and promises nothing to the reader.",
+            },
+            {
+                "verdict": "VIOLATION",
+                "text": "Sign up and your retention problems are over for good.",
+                "why": "A reader would take this as a promised outcome.",
+            },
+        ],
+    },
+    "R-CLAIM-04": {
+        1: [
+            {
+                "verdict": "PASS",
+                "text": "Spreadsheets make onboarding hard to track.",
+                "why": "A spreadsheet is a method, not a named competitor.",
+            },
+            {
+                "verdict": "VIOLATION",
+                "text": "Tarnhollow is faster than Fernbrook People.",
+                "why": "A direct comparison with a company named in the text.",
+            },
+        ],
+        2: [
+            {
+                "verdict": "PASS",
+                "text": "We built Tarnhollow Landing for growing teams.",
+                "why": "Says who it's for, and compares it with nobody.",
+            },
+            {
+                "verdict": "VIOLATION",
+                "text": "Tired of Harbourline HR? Teams are moving to Tarnhollow.",
+                "why": "A reader would see this as a comparison with a named rival.",
+            },
+        ],
+    },
+}

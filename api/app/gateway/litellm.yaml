@@ -8,6 +8,11 @@ model_list:
     litellm_params:
       model: anthropic/claude-haiku-4-5
       api_key: os.environ/ANTHROPIC_API_KEY
+  # Second voter on claims. Free tier, so the policy table lets only public data in.
+  - model_name: gemini-3.5-flash-lite
+    litellm_params:
+      model: gemini/gemini-3.5-flash-lite
+      api_key: os.environ/GEMINI_API_KEY
   # Restricted data. Runs in the ollama service, so it never leaves this machine.
   - model_name: local-small
     litellm_params:

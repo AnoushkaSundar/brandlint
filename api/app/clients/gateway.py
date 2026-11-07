@@ -12,6 +12,7 @@ def llm_call(
     *,
     session: Session,
     review_id: str | None = None,
+    model: str | None = None,
 ) -> dict:
     """The only way product code reaches a model.
 
@@ -29,4 +30,5 @@ def llm_call(
         payload,
         session=session,
         review_id=review_id,
+        **({"model": model} if model else {}),
     )
