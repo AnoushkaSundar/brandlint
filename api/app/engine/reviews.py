@@ -83,6 +83,22 @@ _runs: dict[str, ReviewRun] = {}
 _pool = ThreadPoolExecutor(max_workers=WORKERS, thread_name_prefix="review")
 
 
+class UnreadableContent(ValueError):
+    """A document that claims a format it can't be opened as."""
+
+
+def check_readable(source: ContentSource) -> None:
+    """Opens a document before a review starts, so a corrupt file is refused rather
+    than left in review. Images are left out, because OCR is too slow to do twice."""
+    data, fmt, _ = formats(source)
+    if fmt not in _DOCUMENT_SUFFIXES:
+        return
+    try:
+        parse(data, fmt)
+    except Exception as exc:
+        raise UnreadableContent(source.file_name) from exc
+
+
 def formats(source: ContentSource) -> tuple[str | bytes, str, str]:
     """(data, parser format, tier-0 format) for this content."""
     if not source.file_bytes:
