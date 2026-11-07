@@ -1,6 +1,6 @@
 "use client";
 
-import { Check } from "lucide-react";
+import { Check, Compass } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -23,6 +23,7 @@ import {
 } from "@/lib/demo";
 
 const DONE_KEY = "brandlint-demo-done";
+const SEEN_KEY = "brandlint-demo-guide-seen";
 
 function readDone(): string[] {
   try {
@@ -45,7 +46,18 @@ function saveDone(done: string[]): void {
 export function DemoGuide() {
   const { user } = useAuth();
   const router = useRouter();
-  const [open, setOpen] = useState(false);
+  // Opens by itself the first time, so a judge who has just signed in knows where
+  // to start. After that it waits to be opened.
+  const [open, setOpen] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      if (window.localStorage.getItem(SEEN_KEY)) return false;
+      window.localStorage.setItem(SEEN_KEY, "1");
+      return true;
+    } catch {
+      return false;
+    }
+  });
   // The list only renders once the sheet opens, in the browser, so reading storage
   // here can't cause a mismatch with the server's render.
   const [done, setDone] = useState<string[]>(() =>
@@ -75,7 +87,8 @@ export function DemoGuide() {
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
-      <SheetTrigger render={<Button variant="outline" size="sm" />}>
+      <SheetTrigger render={<Button size="sm" />}>
+        <Compass aria-hidden="true" />
         Demo guide
       </SheetTrigger>
       <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-md">
