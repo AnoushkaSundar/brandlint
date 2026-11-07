@@ -1,6 +1,9 @@
 """Stands in for /governance until the real governance agent lands."""
 
-from fastapi import APIRouter
+from typing import Literal
+
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
 
 from mocks import data
 
@@ -48,9 +51,34 @@ def proposals() -> list[dict]:
     ]
 
 
+# Decisions are kept for the life of the process, so the screen behaves as it would.
+_decided: set[str] = set()
+
+
+class Decision(BaseModel):
+    status: Literal["approved", "rejected"]
+
+
+def _pending() -> list[dict]:
+    return [proposal for proposal in proposals() if proposal["id"] not in _decided]
+
+
 @router.post("/run")
 def run() -> list[dict]:
-    return proposals()
+    return _pending()
+
+
+@router.get("/proposals")
+def list_proposals() -> list[dict]:
+    return _pending()
+
+
+@router.post("/proposals/{proposal_id}")
+def decide(proposal_id: str, body: Decision) -> list[dict]:
+    if proposal_id not in {proposal["id"] for proposal in _pending()}:
+        raise HTTPException(404, "No such pending proposal")
+    _decided.add(proposal_id)
+    return _pending()
 
 
 @router.get("/spot-checks")

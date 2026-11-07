@@ -1,12 +1,8 @@
-import {
-  PlaceholderPage,
-  placeholderMetadata,
-} from "@/components/placeholder-page";
+import { placeholderMetadata } from "@/components/placeholder-page";
+import { ProposalsScreen } from "@/components/proposals-screen";
 
-const HREF = "/proposals";
-
-export const metadata = placeholderMetadata(HREF);
+export const metadata = placeholderMetadata("/proposals");
 
 export default function Page() {
-  return <PlaceholderPage href={HREF} />;
+  return <ProposalsScreen />;
 }
