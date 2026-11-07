@@ -6,16 +6,19 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends
 
-from app.auth.dependencies import SessionDep, current_user
+from app.auth.dependencies import SessionDep, current_user, require_roles
 from app.clients.flags import use_mock
-from app.contracts import Precedent
+from app.contracts import Precedent, Role
 from app.memory import queries
+
+# Impact and the graph span every piece, and creators include outside agencies.
+STAFF = require_roles(Role.reviewer, Role.manager, Role.legal, Role.admin)
 
 
 def _routes() -> APIRouter:
     routes = APIRouter(dependencies=[Depends(current_user)])
 
-    @routes.get("/impact")
+    @routes.get("/impact", dependencies=[Depends(STAFF)])
     def impact(fact_id: str, session: SessionDep) -> list[dict]:
         return queries.impact(fact_id, session)
 
@@ -23,7 +26,7 @@ def _routes() -> APIRouter:
     def precedents(finding_id: str, session: SessionDep) -> list[Precedent]:
         return queries.precedents(finding_id, session)
 
-    @routes.get("/graph")
+    @routes.get("/graph", dependencies=[Depends(STAFF)])
     def graph(root: str, session: SessionDep) -> dict:
         return queries.graph(root, session)
 
