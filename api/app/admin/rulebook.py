@@ -1,6 +1,6 @@
 """The rulebook a review runs against. The engine calls these functions directly."""
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.admin.models import Rule as RuleRow
@@ -11,9 +11,19 @@ class RulebookNotFound(LookupError):
     """No approved rules exist at the version asked for."""
 
 
-def current_rulebook_version() -> int:
-    """The version a new review pins. Rule approval bumps this in block 8."""
-    return 1
+def current_rulebook_version(session: Session | None = None) -> int:
+    """The version a new review pins: the newest approved rule version.
+
+    Approving rules creates rows at a higher version, so approval bumps this.
+    """
+    if session is None:
+        return 1
+    newest = session.scalar(
+        select(func.max(RuleRow.version)).where(
+            RuleRow.status == RuleStatus.approved.value
+        )
+    )
+    return newest or 1
 
 
 def rulebook_at(session: Session, version: int | None = None) -> list[Rule]:
@@ -26,7 +36,7 @@ def rulebook_at(session: Session, version: int | None = None) -> list[Rule]:
     Raises RulebookNotFound rather than returning nothing, because a review against an
     empty rulebook would pass everything.
     """
-    current = current_rulebook_version()
+    current = current_rulebook_version(session)
     pinned = current if version is None else version
     if pinned > current:
         raise RulebookNotFound(f"Rulebook version {pinned} doesn't exist yet")

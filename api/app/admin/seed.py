@@ -4,6 +4,7 @@ Safe to run twice. A row that already exists is left alone, so an admin's edits 
 """
 
 import json
+import sys
 from datetime import date
 from typing import Any
 
@@ -22,7 +23,10 @@ def _brand(name: str) -> list[dict[str, Any]]:
 
 def _with_date(fact: dict[str, Any]) -> dict[str, Any]:
     valid_until = fact.get("valid_until")
-    return {**fact, "valid_until": date.fromisoformat(valid_until) if valid_until else None}
+    return {
+        **fact,
+        "valid_until": date.fromisoformat(valid_until) if valid_until else None,
+    }
 
 
 def _add_missing(
@@ -38,10 +42,14 @@ def _add_missing(
     return len(missing)
 
 
-def seed_brand(session: Session) -> dict[str, int]:
-    """Adds any missing demo brand rows and returns how many of each were created."""
+def seed_brand(session: Session, *, rules: bool = True) -> dict[str, int]:
+    """Adds any missing demo brand rows and returns how many of each were created.
+
+    Without rules, the rulebook starts empty, for a demo that begins by ingesting the
+    guideline.
+    """
     added = {
-        "rules": _add_missing(session, Rule, _brand("rules.json")),
+        "rules": _add_missing(session, Rule, _brand("rules.json")) if rules else 0,
         "facts": _add_missing(
             session, Fact, [_with_date(fact) for fact in _brand("facts.json")]
         ),
@@ -53,9 +61,12 @@ def seed_brand(session: Session) -> dict[str, int]:
 
 
 def main() -> None:
+    with_rules = "--without-rules" not in sys.argv
     with get_sessionmaker()() as session:
-        added = seed_brand(session)
-    print("Added " + ", ".join(f"{count} {name}" for name, count in added.items()) + ".")
+        added = seed_brand(session, rules=with_rules)
+    print(
+        "Added " + ", ".join(f"{count} {name}" for name, count in added.items()) + "."
+    )
 
 
 if __name__ == "__main__":

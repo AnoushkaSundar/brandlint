@@ -21,6 +21,7 @@ from app.auth.router import router as auth_router
 from app.auth.security import SESSION_COOKIE, create_token, hash_password
 from app.contracts import CheckType, DataClass, Gap, Role, RuleStatus
 from app.db import Base, get_session
+from app.workflow.models import AuditLog
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, select
@@ -157,7 +158,7 @@ def test_the_rulebook_carries_the_required_text(seeded):
 
 
 def test_a_review_pinned_to_an_old_version_keeps_the_old_wording(session, monkeypatch):
-    monkeypatch.setattr("app.admin.rulebook.current_rulebook_version", lambda: 2)
+    monkeypatch.setattr("app.admin.rulebook.current_rulebook_version", lambda *args: 2)
     session.add_all(
         [
             rule_row("R-1", 1, RuleStatus.approved),
@@ -172,7 +173,7 @@ def test_a_review_pinned_to_an_old_version_keeps_the_old_wording(session, monkey
 
 
 def test_a_draft_edit_does_not_replace_the_approved_rule(session, monkeypatch):
-    monkeypatch.setattr("app.admin.rulebook.current_rulebook_version", lambda: 2)
+    monkeypatch.setattr("app.admin.rulebook.current_rulebook_version", lambda *args: 2)
     session.add_all(
         [rule_row("R-1", 1, RuleStatus.approved), rule_row("R-1", 2, RuleStatus.draft)]
     )
@@ -182,7 +183,7 @@ def test_a_draft_edit_does_not_replace_the_approved_rule(session, monkeypatch):
 
 
 def test_a_retired_rule_stays_in_older_versions_only(session, monkeypatch):
-    monkeypatch.setattr("app.admin.rulebook.current_rulebook_version", lambda: 2)
+    monkeypatch.setattr("app.admin.rulebook.current_rulebook_version", lambda *args: 2)
     session.add_all(
         [
             rule_row("R-1", 1, RuleStatus.approved),
@@ -197,7 +198,7 @@ def test_a_retired_rule_stays_in_older_versions_only(session, monkeypatch):
 
 
 def test_a_superseded_rule_gives_way_to_its_replacement(session, monkeypatch):
-    monkeypatch.setattr("app.admin.rulebook.current_rulebook_version", lambda: 2)
+    monkeypatch.setattr("app.admin.rulebook.current_rulebook_version", lambda *args: 2)
     session.add_all(
         [
             rule_row("R-1", 1, RuleStatus.approved),
@@ -211,7 +212,7 @@ def test_a_superseded_rule_gives_way_to_its_replacement(session, monkeypatch):
 
 
 def test_a_rule_superseding_its_own_old_version_stays_in_force(session, monkeypatch):
-    monkeypatch.setattr("app.admin.rulebook.current_rulebook_version", lambda: 2)
+    monkeypatch.setattr("app.admin.rulebook.current_rulebook_version", lambda *args: 2)
     session.add_all(
         [
             rule_row("R-1", 1, RuleStatus.approved),
@@ -410,3 +411,331 @@ def test_a_malformed_gap_is_refused(client_for):
     response = client_for(Role.admin).post("/admin/gaps", json=[{"id": "gap-1"}])
 
     assert response.status_code == 422
+
+
+# Editing brand data
+
+
+NEW_FACT = {
+    "statement": "Customers cut onboarding time by 41% on average.",
+    "value": "41%",
+    "source_doc": "Customer study 2026",
+    "owner": "Insights team",
+    "valid_until": "2027-12-31",
+    "data_class": "public",
+}
+
+
+@pytest.fixture
+def no_impact(monkeypatch):
+    monkeypatch.setattr("app.admin.router.memory.impact", lambda fact_id, session: [])
+
+
+def test_editing_a_fact_adds_a_version_and_keeps_the_old_one(
+    seeded, client_for, no_impact
+):
+    response = client_for(Role.admin).put("/admin/facts/F-002", json=NEW_FACT)
+
+    assert response.status_code == 200
+    assert response.json()["fact"]["version"] == 2
+    assert response.json()["impact"] == []
+    assert seeded.get(FactRow, ("F-002", 1)).value != "41%"
+    assert {fact.id: fact for fact in list_facts(seeded)}["F-002"].value == "41%"
+
+
+def test_a_fact_edit_reports_the_affected_pieces(seeded, client_for, monkeypatch):
+    affected = [{"content_id": "c1", "state": "published", "claim_text": "by 80%"}]
+    monkeypatch.setattr(
+        "app.admin.router.memory.impact", lambda fact_id, session: affected
+    )
+
+    response = client_for(Role.admin).put("/admin/facts/F-002", json=NEW_FACT)
+
+    assert response.json()["impact"] == affected
+
+
+def test_a_fact_edit_is_audited_with_before_and_after(seeded, client_for, no_impact):
+    client_for(Role.admin).put("/admin/facts/F-002", json=NEW_FACT)
+
+    entry = seeded.scalars(select(AuditLog).where(AuditLog.action == "fact:edit")).one()
+    assert entry.target_id == "F-002"
+    assert entry.before["version"] == 1
+    assert entry.after["value"] == "41%"
+
+
+def test_an_unchanged_fact_is_refused(seeded, client_for, no_impact):
+    current = {fact.id: fact for fact in list_facts(seeded)}["F-001"].model_dump(
+        mode="json"
+    )
+    body = {key: current[key] for key in NEW_FACT}
+
+    assert (
+        client_for(Role.admin).put("/admin/facts/F-001", json=body).status_code == 409
+    )
+
+
+@pytest.mark.parametrize("role", NON_READERS + [Role.legal])
+def test_only_an_admin_edits_brand_data(seeded, client_for, role):
+    client = client_for(role)
+
+    assert client.put("/admin/facts/F-002", json=NEW_FACT).status_code == 403
+    assert client.post("/admin/facts", json=NEW_FACT).status_code == 403
+    assert client.post("/admin/terms", json={"preferred": "x"}).status_code == 403
+
+
+def test_a_new_fact_gets_the_next_id(seeded, client_for):
+    response = client_for(Role.admin).post("/admin/facts", json=NEW_FACT)
+
+    assert response.status_code == 201
+    assert response.json()["id"] == "F-011"
+
+
+def test_a_bad_fact_is_refused(seeded, client_for):
+    assert (
+        client_for(Role.admin)
+        .post("/admin/facts", json={**NEW_FACT, "value": ""})
+        .status_code
+        == 422
+    )
+
+
+def test_terms_can_be_added_and_edited(seeded, client_for):
+    admin = client_for(Role.admin)
+
+    created = admin.post(
+        "/admin/terms", json={"preferred": "teammate", "banned": [" staffer ", ""]}
+    )
+    assert created.json()["banned"] == ["staffer"]
+
+    edited = admin.put(
+        f"/admin/terms/{created.json()['id']}",
+        json={
+            "preferred": "teammate",
+            "banned": ["staffer", "worker"],
+            "rule_id": "R-TERM-03",
+        },
+    )
+    assert edited.json()["banned"] == ["staffer", "worker"]
+    assert edited.json()["rule_id"] == "R-TERM-03"
+
+
+def test_a_palette_needs_real_colours(seeded, client_for):
+    admin = client_for(Role.admin)
+
+    assert admin.post("/admin/assets/palette", json={"colours": ["#12343b"]}).json()[
+        "meta"
+    ] == {"colours": ["#12343B"]}
+    assert (
+        admin.post("/admin/assets/palette", json={"colours": ["teal"]}).status_code
+        == 422
+    )
+
+
+def test_a_logo_upload_is_stored_and_listed(seeded, client_for, tmp_path, monkeypatch):
+    monkeypatch.setenv("UPLOAD_DIR", str(tmp_path))
+    admin = client_for(Role.admin)
+
+    response = admin.post(
+        "/admin/assets",
+        data={"kind": "logo"},
+        files={"file": ("logo.png", b"\x89PNG\r\n\x1a\n data")},
+    )
+
+    assert response.status_code == 201
+    stored = tmp_path / response.json()["file_ref"]
+    assert stored.read_bytes().startswith(b"\x89PNG")
+    assert response.json()["id"] in {
+        asset["id"] for asset in admin.get("/admin/assets").json()
+    }
+
+
+@pytest.mark.parametrize(
+    ("name", "data"),
+    [("logo.svg", b"<svg/>"), ("logo.png", b"not a png"), ("guide.pdf", b"%PDF-1.7")],
+)
+def test_only_png_or_jpeg_assets_are_accepted(
+    seeded, client_for, tmp_path, monkeypatch, name, data
+):
+    monkeypatch.setenv("UPLOAD_DIR", str(tmp_path))
+
+    response = client_for(Role.admin).post(
+        "/admin/assets", data={"kind": "logo"}, files={"file": (name, data)}
+    )
+
+    assert response.status_code == 422
+
+
+def test_the_rulebook_version_follows_approved_rules(seeded):
+    from app.admin.rulebook import current_rulebook_version
+
+    assert current_rulebook_version(seeded) == 1
+    seeded.add(rule_row("R-NEW", 2, RuleStatus.approved))
+    seeded.commit()
+
+    assert current_rulebook_version(seeded) == 2
+
+
+# Ingest and approval
+
+
+@pytest.fixture
+def guideline():
+    from pathlib import Path
+
+    return (
+        Path(__file__).resolve().parents[2] / "demo" / "brand" / "guidelines.pdf"
+    ).read_bytes()
+
+
+@pytest.fixture
+def empty_rulebook(session):
+    seed_brand(session, rules=False)
+    return session
+
+
+def upload(client, data, name="guidelines.pdf"):
+    return client.post("/admin/ingest", files={"file": (name, data)})
+
+
+def test_a_guideline_becomes_drafts_with_its_conflict_flagged(
+    empty_rulebook, client_for, guideline
+):
+    admin = client_for(Role.admin)
+
+    response = upload(admin, guideline)
+
+    assert response.status_code == 201
+    assert response.json()["status"] == "done"
+    listing = admin.get("/admin/rules/drafts").json()
+    assert listing["version"] == 1
+    assert len(listing["drafts"]) == 19
+    assert sorted(listing["conflicts"][0]) == ["R-TERM-04", "R-TONE-04"]
+
+
+def test_ingest_keeps_required_text(empty_rulebook, client_for, guideline):
+    admin = client_for(Role.admin)
+    upload(admin, guideline)
+
+    drafts = {
+        rule["id"]: rule for rule in admin.get("/admin/rules/drafts").json()["drafts"]
+    }
+
+    assert drafts["R-REQ-01"]["required_text"] == "Results vary by organisation."
+
+
+def test_nothing_is_live_until_an_admin_approves(empty_rulebook, client_for, guideline):
+    upload(client_for(Role.admin), guideline)
+
+    with pytest.raises(RulebookNotFound):
+        rulebook_at(empty_rulebook)
+
+
+def test_both_sides_of_a_conflict_cant_be_approved(
+    empty_rulebook, client_for, guideline
+):
+    admin = client_for(Role.admin)
+    upload(admin, guideline)
+    ids = [rule["id"] for rule in admin.get("/admin/rules/drafts").json()["drafts"]]
+
+    response = admin.post("/admin/rules/approve", json={"rule_ids": ids})
+
+    assert response.status_code == 409
+    assert "contradict" in response.json()["detail"]
+
+
+def test_rejecting_one_side_lets_the_rulebook_go_live(
+    empty_rulebook, client_for, guideline
+):
+    admin = client_for(Role.admin)
+    upload(admin, guideline)
+    assert admin.delete("/admin/rules/R-TERM-04/draft").status_code == 204
+    ids = [rule["id"] for rule in admin.get("/admin/rules/drafts").json()["drafts"]]
+
+    response = admin.post("/admin/rules/approve", json={"rule_ids": ids})
+
+    assert response.json() == {"version": 1}
+    assert len(rulebook_at(empty_rulebook)) == 18
+    assert admin.get("/admin/rules/drafts").json()["drafts"] == []
+
+
+def test_an_approved_rule_is_no_longer_a_draft(empty_rulebook, client_for, guideline):
+    admin = client_for(Role.admin)
+    upload(admin, guideline)
+    admin.delete("/admin/rules/R-TERM-04/draft")
+    ids = [rule["id"] for rule in admin.get("/admin/rules/drafts").json()["drafts"]]
+    admin.post("/admin/rules/approve", json={"rule_ids": ids})
+
+    admin.put(
+        "/admin/rules/R-TONE-01/draft",
+        json={"text": "x", "severity": "low", "channel_scope": []},
+    )
+    assert (
+        admin.post("/admin/rules/approve", json={"rule_ids": ["R-TONE-01"]}).status_code
+        == 404
+    )
+
+
+def test_an_unchanged_rule_is_not_drafted_again(seeded, client_for, guideline):
+    admin = client_for(Role.admin)
+
+    upload(admin, guideline)
+
+    drafts = admin.get("/admin/rules/drafts").json()["drafts"]
+    assert [rule["id"] for rule in drafts] == ["R-TERM-04"]
+
+
+def test_a_draft_can_be_edited_before_approval(empty_rulebook, client_for, guideline):
+    admin = client_for(Role.admin)
+    upload(admin, guideline)
+
+    response = admin.put(
+        "/admin/rules/R-TONE-01/draft",
+        json={"text": "Write warmly.", "severity": "low", "channel_scope": ["blog"]},
+    )
+
+    assert response.json()["text"] == "Write warmly."
+    assert response.json()["status"] == "draft"
+
+
+def test_a_failed_model_reply_marks_the_job_failed(
+    empty_rulebook, client_for, guideline, monkeypatch
+):
+    monkeypatch.setattr("app.admin.ingest.llm_call", lambda *a, **k: {"rules": "nope"})
+
+    response = upload(client_for(Role.admin), guideline)
+
+    assert response.json()["status"] == "failed"
+    assert "wasn't usable" in response.json()["error"]
+
+
+@pytest.mark.parametrize(
+    ("name", "data"), [("guide.png", b"\x89PNG"), ("guide.txt", b"   ")]
+)
+def test_an_unusable_file_is_refused(empty_rulebook, client_for, name, data):
+    assert upload(client_for(Role.admin), data, name).status_code == 422
+
+
+@pytest.mark.parametrize("role", NON_READERS + [Role.legal])
+def test_only_an_admin_ingests_or_approves(empty_rulebook, client_for, guideline, role):
+    client = client_for(role)
+
+    assert upload(client, guideline).status_code == 403
+    assert (
+        client.post(
+            "/admin/rules/approve", json={"rule_ids": ["R-TONE-01"]}
+        ).status_code
+        == 403
+    )
+    assert client.get("/admin/rules/drafts").status_code == 403
+
+
+def test_approval_is_audited(empty_rulebook, client_for, guideline):
+    admin = client_for(Role.admin)
+    upload(admin, guideline)
+    admin.delete("/admin/rules/R-TERM-04/draft")
+    ids = [rule["id"] for rule in admin.get("/admin/rules/drafts").json()["drafts"]]
+    admin.post("/admin/rules/approve", json={"rule_ids": ids})
+
+    actions = set(empty_rulebook.scalars(select(AuditLog.action)))
+
+    assert {"rules:ingest", "rule:reject", "rules:approve"} <= actions

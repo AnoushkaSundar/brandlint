@@ -241,7 +241,7 @@ def start_review(content_id: str, user: Creator, session: SessionDep) -> Review:
         content.state == ContentState.resolving.value
         and previous is not None
         and previous.content_version_id == latest.id
-        and previous.rulebook_version == current_rulebook_version()
+        and previous.rulebook_version == current_rulebook_version(session)
     ):
         raise HTTPException(
             status.HTTP_409_CONFLICT, "Add a new version to review it again."
@@ -254,7 +254,7 @@ def start_review(content_id: str, user: Creator, session: SessionDep) -> Review:
             )
             raise HTTPException(status.HTTP_409_CONFLICT, message)
     source = _content_source(content, latest)
-    rulebook_version = current_rulebook_version()
+    rulebook_version = current_rulebook_version(session)
     review = Review(
         content_version_id=latest.id,
         engine_review_id=engine_client.start_review(

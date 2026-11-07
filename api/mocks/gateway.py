@@ -55,21 +55,26 @@ def _verdicts(rule_ids: list[str], payload: dict) -> dict:
                 "explanation": "Mock verdict.",
             }
             for rule_id in rule_ids
-        ]
+        ],
     }
 
 
 def _draft_rules() -> dict:
-    fields = ("type", "text", "clause_ref", "severity", "channel_scope")
+    fields = ("id", "type", "text", "clause_ref", "severity", "channel_scope")
     return {
-        "rules": [{field: rule[field] for field in fields} for rule in data.rules()],
+        # required_text is kept, or the disclaimer check would go quiet after ingest.
+        "rules": [
+            {
+                **{field: rule[field] for field in fields},
+                "required_text": rule.get("required_text"),
+            }
+            for rule in data.rules()
+        ],
         "conflicts": [{"clause_refs": ["§2.4", "§3.4"]}],
     }
 
 
-def llm_call(
-    purpose: str, data_class: str, rule_ids: list[str], payload: dict
-) -> dict:
+def llm_call(purpose: str, data_class: str, rule_ids: list[str], payload: dict) -> dict:
     """Same signature as llm.call in app.gateway. Unknown purposes fail loudly."""
     if purpose == "ingest":
         return _draft_rules()
