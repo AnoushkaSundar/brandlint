@@ -13,98 +13,129 @@ import { Label } from "@/components/ui/label";
 import { getFacts } from "@/lib/admin";
 import { type Graph, type GraphNode, getGraph } from "@/lib/graph";
 
-const COLUMN_ORDER = ["fact", "claim", "content"];
-const WIDTH = 760;
-const ROW = 56;
-const NODE_W = 200;
-const NODE_H = 36;
-
-function columnOf(node: GraphNode): number {
-  const index = COLUMN_ORDER.indexOf(node.type.toLowerCase());
-  return index === -1 ? COLUMN_ORDER.length : index;
-}
-
 function shorten(text: string, limit = 28): string {
   return text.length > limit ? `${text.slice(0, limit - 1)}…` : text;
 }
 
-/** A fixed left-to-right layout: facts, then the claims citing them, then content. */
-function layout(graph: Graph) {
-  const columns = new Map<number, GraphNode[]>();
-  for (const node of graph.nodes) {
-    const column = columnOf(node);
-    columns.set(column, [...(columns.get(column) ?? []), node]);
+const VERBS: Record<string, string> = {
+  supported_by: "is supported by",
+  cites: "cites",
+  contains: "contains",
+};
+
+type ClaimRow = { text: string; pieces: GraphNode[] };
+
+/** The fact's source, the claims citing it, and the pieces holding each claim.
+ * Claims with the same wording are merged, so each one appears once. */
+function relations(graph: Graph, factId: string) {
+  const byId = new Map(graph.nodes.map((node) => [node.id, node]));
+  const kind = (edge: { type: string }) => edge.type.toLowerCase();
+  const sources = graph.edges
+    .filter((edge) => kind(edge) === "supported_by" && edge.source === factId)
+    .map((edge) => byId.get(edge.target)?.label ?? edge.target);
+  const rows = new Map<string, Map<string, GraphNode>>();
+  for (const edge of graph.edges) {
+    if (kind(edge) !== "cites" || edge.target !== factId) continue;
+    const claim = byId.get(edge.source);
+    if (!claim) continue;
+    const pieces = rows.get(claim.label) ?? new Map<string, GraphNode>();
+    for (const holds of graph.edges) {
+      const piece = byId.get(holds.source);
+      if (kind(holds) === "contains" && holds.target === claim.id && piece) {
+        pieces.set(piece.id, piece);
+      }
+    }
+    rows.set(claim.label, pieces);
   }
-  const count = Math.max(...columns.keys(), 0) + 1;
-  const tallest = Math.max(1, ...[...columns.values()].map((c) => c.length));
-  const height = tallest * ROW + 16;
-  const step = count > 1 ? (WIDTH - NODE_W) / (count - 1) : 0;
-  const place = new Map<string, { x: number; y: number }>();
-  for (const [column, nodes] of columns) {
-    const top = (height - nodes.length * ROW) / 2;
-    nodes.forEach((node, row) => {
-      place.set(node.id, { x: column * step, y: top + row * ROW + 10 });
-    });
-  }
-  return { place, height };
+  const claims: ClaimRow[] = [...rows].map(([text, pieces]) => ({
+    text,
+    pieces: [...pieces.values()],
+  }));
+  return { sources, claims };
 }
 
-function GraphPicture({ graph }: { graph: Graph }) {
-  const { place, height } = layout(graph);
-  const label = new Map(graph.nodes.map((node) => [node.id, node.label]));
+function Arrow() {
   return (
-    <div className="mt-4 overflow-x-auto rounded-lg border p-3">
-      <svg
-        role="img"
-        aria-label={`${graph.nodes.length} nodes and ${graph.edges.length} links. The same links are listed below.`}
-        viewBox={`0 0 ${WIDTH} ${height}`}
-        className="min-w-[640px]"
-      >
-        {graph.edges.map((edge) => {
-          const from = place.get(edge.source);
-          const to = place.get(edge.target);
-          if (!from || !to) return null;
-          const [left, right] = from.x <= to.x ? [from, to] : [to, from];
-          return (
-            <line
-              key={`${edge.source}-${edge.target}-${edge.type}`}
-              x1={left.x + NODE_W}
-              y1={left.y + NODE_H / 2}
-              x2={right.x}
-              y2={right.y + NODE_H / 2}
-              className="stroke-muted-foreground"
-              strokeWidth={1.5}
-            />
-          );
-        })}
-        {graph.nodes.map((node) => {
-          const at = place.get(node.id)!;
-          return (
-            <g key={node.id} transform={`translate(${at.x} ${at.y})`}>
-              <title>{`${node.type}: ${label.get(node.id)}`}</title>
-              <rect
-                width={NODE_W}
-                height={NODE_H}
-                rx={6}
-                className={
-                  node.type.toLowerCase() === "fact"
-                    ? "fill-primary"
-                    : "fill-background stroke-border"
-                }
-                strokeWidth={1}
-              />
-              <text
-                x={10}
-                y={NODE_H / 2 + 4}
-                className={`text-[12px] ${node.type.toLowerCase() === "fact" ? "fill-primary-foreground" : "fill-foreground"}`}
+    <span aria-hidden="true" className="hidden self-center text-muted-foreground md:block">
+      &rarr;
+    </span>
+  );
+}
+
+function Relations({
+  graph,
+  factId,
+  statement,
+}: {
+  graph: Graph;
+  factId: string;
+  statement?: string;
+}) {
+  const { sources, claims } = relations(graph, factId);
+  const pieceCount = new Set(claims.flatMap((row) => row.pieces.map((p) => p.id))).size;
+  return (
+    <>
+      <p className="mt-6 text-sm">
+        <strong>{factId}</strong> is cited by {claims.length}{" "}
+        {claims.length === 1 ? "claim" : "claims"} in {pieceCount}{" "}
+        {pieceCount === 1 ? "piece" : "pieces"}. If the fact changes, those pieces
+        are queued for a re-review.
+      </p>
+      <div className="mt-4 grid gap-4 rounded-xl border p-4 md:grid-cols-[minmax(0,16rem)_auto_minmax(0,1fr)]">
+        <section aria-labelledby="graph-fact">
+          <h3 id="graph-fact" className="text-xs font-medium text-muted-foreground uppercase">
+            Approved fact
+          </h3>
+          <div className="mt-2 rounded-lg bg-primary p-3 text-primary-foreground">
+            <p className="font-semibold">{factId}</p>
+            {statement && <p className="mt-1 text-sm">{statement}</p>}
+          </div>
+          {sources.length > 0 && (
+            <p className="mt-2 text-sm text-muted-foreground">
+              Source: {sources.join(", ")}
+            </p>
+          )}
+        </section>
+        <Arrow />
+        <section aria-labelledby="graph-claims">
+          <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,14rem)]">
+            <h3 id="graph-claims" className="text-xs font-medium text-muted-foreground uppercase">
+              Claims that cite it
+            </h3>
+            <span className="hidden md:block" />
+            <h3 className="hidden text-xs font-medium text-muted-foreground uppercase md:block">
+              Pieces that contain the claim
+            </h3>
+          </div>
+          <ul className="mt-2 flex flex-col gap-3">
+            {claims.map((row) => (
+              <li
+                key={row.text}
+                className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,14rem)]"
               >
-                {shorten(node.label)}
-              </text>
-            </g>
-          );
-        })}
-      </svg>
-    </div>
+                <p className="rounded-lg border p-3 text-sm">&ldquo;{row.text}&rdquo;</p>
+                <Arrow />
+                <ul className="flex flex-col gap-2" aria-label="Pieces that contain the claim">
+                  <li aria-hidden="true" className="text-xs font-medium text-muted-foreground uppercase md:hidden">
+                    Contained in
+                  </li>
+                  {row.pieces.map((piece) => (
+                    <li key={piece.id}>
+                      <Link
+                        href={`/content/${piece.id}`}
+                        className="block rounded-lg border p-3 text-sm font-medium underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                      >
+                        {piece.label}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </li>
+            ))}
+          </ul>
+        </section>
+      </div>
+    </>
   );
 }
 
@@ -152,8 +183,13 @@ export function GraphScreen() {
       )}
       {graph && graph.edges.length > 0 && (
         <>
-          <GraphPicture graph={graph} />
-          <h2 className="mt-6 font-semibold">Links</h2>
+          <Relations
+            graph={graph}
+            factId={chosen}
+            statement={facts.data?.find((fact) => fact.id === chosen)?.statement}
+          />
+          <details className="mt-6">
+            <summary className="cursor-pointer font-semibold">All links</summary>
           <ul className="mt-2 flex flex-col gap-1 text-sm">
             {graph.edges.map((edge) => {
               const source = names.get(edge.source);
@@ -170,13 +206,14 @@ export function GraphScreen() {
                 <li key={`${edge.source}-${edge.target}-${edge.type}`}>
                   {show(source, edge.source)}{" "}
                   <span className="text-muted-foreground">
-                    {edge.type.toLowerCase()}
+                    {VERBS[edge.type.toLowerCase()] ?? edge.type.toLowerCase()}
                   </span>{" "}
                   {show(target, edge.target)}
                 </li>
               );
             })}
           </ul>
+          </details>
         </>
       )}
     </div>
