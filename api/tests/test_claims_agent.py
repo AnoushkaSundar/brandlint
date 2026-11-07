@@ -127,6 +127,22 @@ def test_an_expired_fact_is_outdated_and_cites_only_the_fact():
     assert found.fact_ids == ["F-003"]
 
 
+def test_an_expired_fact_cites_the_same_rule_as_the_code_check_so_they_merge():
+    expiry = Rule(
+        id="R-CLAIM-02", version=1, type="deterministic",
+        text="Never publish a statistic after its valid-until date.",
+        clause_ref="§4.2", severity="high", channel_scope=[], status="approved",
+    )
+    ctx = context()
+    ctx.rules = [*ctx.rules, expiry]
+    match = {"verdict": "supported", "fact_id": "F-003", "explanation": "ok"}
+    found = claims.verify(
+        unit("92% of new hires finish onboarding checklist."), ctx, Model(match=match),
+        data_class="public", flagged=(), model="m",
+    )
+    assert (found.rule_id, found.fact_ids) == ("R-CLAIM-02", ["F-003"])
+
+
 def test_an_unsupported_statistic_is_a_violation_with_an_evidence_request():
     found = verify(unit("Teams double retention by 300%."), Model(), facts=())
     assert found.verdict == "VIOLATION"
