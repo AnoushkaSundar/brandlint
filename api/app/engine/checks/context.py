@@ -88,6 +88,7 @@ def make_finding(
     fact_ids: list[str] | None = None,
     sources: list[str] | None = None,
     tool: str = "tier0",
+    fix_available: bool = False,
 ) -> Finding:
     """Build a tier-0 Finding. Pass a brand `rule`, or an explicit `rule_id`
     (e.g. a built-in security rule), or `fact_ids` — at least one is required."""
@@ -123,6 +124,6 @@ def make_finding(
         ),
         ai_generated=False,
         models_used=[],
-        fix_available=False,
+        fix_available=fix_available,
         status="open",
     )

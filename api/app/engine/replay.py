@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.contracts import Rule, Span, Verdict
 from app.engine import models
-from app.engine.agents import claims, language
+from app.engine.agents import claims, document, language
 from app.engine.agents.language import ClassifyFn
 from app.engine.brand import load_brand
 from app.engine.checks import CheckContext, run_tier0
@@ -97,6 +97,30 @@ def _replay_claim(
     return candidate.verdict.value, _spans(candidate.spans)
 
 
+def _replay_document(
+    finding: models.Finding, manifest: dict, session: Session, classify: ClassifyFn
+) -> tuple[str, list[dict]]:
+    rows = session.scalars(
+        select(models.Chunk)
+        .where(models.Chunk.content_version_id == finding.content_version_id)
+        .order_by(models.Chunk.ordinal)
+    ).all()
+    brand = load_brand(session, manifest["rulebook_version"])
+    ctx = CheckContext(
+        review_id=finding.review_id,
+        content_version_id=finding.content_version_id,
+        channel=manifest["channel"],
+        rules=brand.rules,
+    )
+    candidate = document.tone_drift(
+        [_parsed(row) for row in rows], ctx, classify,
+        flagged=manifest["flagged"], model=manifest["model"],
+    )
+    if candidate is None:
+        return Verdict.PASS.value, []
+    return candidate.verdict.value, _spans(candidate.spans)
+
+
 def _replay_code(
     finding: models.Finding, manifest: dict, session: Session
 ) -> tuple[str, list[dict]]:
@@ -133,6 +157,8 @@ def replay(finding_id: str, session: Session, classify: ClassifyFn) -> dict | No
 
     if manifest.get("kind") == "language":
         verdict, spans = _replay_language(finding, manifest, session, classify)
+    elif manifest.get("kind") == "document":
+        verdict, spans = _replay_document(finding, manifest, session, classify)
     elif manifest.get("kind") == "claim":
         if not manifest["spans"]:
             raise NotReplayable("This finding covers the whole document.")
