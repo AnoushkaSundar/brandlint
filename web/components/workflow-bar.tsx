@@ -122,7 +122,7 @@ export function WorkflowBar({
   return (
     <section
       aria-label="Workflow"
-      className="mt-4 flex flex-col gap-2 rounded-lg border p-3 text-sm"
+      className="mt-4 flex flex-col gap-2 rounded-xl border bg-card p-4 text-sm shadow-sm"
     >
       <p>
         Status: <span className="font-medium">{STATE_LABELS[board.state]}</span>

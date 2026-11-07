@@ -72,7 +72,7 @@ export type TourStep = {
 
 const LINKEDIN = "LinkedIn post";
 const BLOG = "Agency blog";
-export const FINAL_DRAFT = "Agency blog, final draft";
+export const FINAL_DRAFT = "Spring newsletter, final draft";
 
 export const TOUR: readonly TourStep[] = [
   {
@@ -164,17 +164,17 @@ export const TOUR: readonly TourStep[] = [
     role: "manager",
     place: { path: "/approvals" },
     title: "Approve",
-    see: "You're now Marcus, the manager. “Agency blog, final draft” has every finding resolved and is waiting for him.",
+    see: "You're now Marcus, the manager. “Spring newsletter, final draft” has every finding resolved and is waiting for him.",
     steps: ["Open it and approve it."],
-    why: "It makes a high-severity claim, so it goes on to legal rather than straight to publication.",
+    why: "It promises an outcome, a high-severity claim, so it goes on to legal rather than straight to publication.",
   },
   {
     role: "legal",
     place: { path: "/approvals" },
     title: "Legal sign-off",
-    see: "You're now Aisha, from legal. She signs off anything with a high-severity claim. If her list is empty, go Back and approve the final draft as Marcus first.",
+    see: "You're now Aisha, from legal. She signs off anything with a high-severity claim. If her list is empty, go Back and approve the newsletter as Marcus first.",
     steps: [
-      "Open the final draft and sign it off. It's now published.",
+      "Open the newsletter and sign it off. It's now published.",
       "Open its history to see every decision, who made it, and which rulebook version it was checked against.",
     ],
     why: "Every decision is recorded, and a published version is locked.",

@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { CommentThread } from "@/components/comment-thread";
 import { DecisionActions } from "@/components/decision-actions";
 import { FixPanel } from "@/components/fix-panel";
-import { SEVERITY_MARK } from "@/components/review-document";
+import { SEVERITY_EDGE, SeverityBadge } from "@/components/severity-badge";
 import { Button } from "@/components/ui/button";
 import { ApiError } from "@/lib/api";
 import type { Finding, Precedent } from "@/lib/contracts";
@@ -19,13 +19,21 @@ import {
   confidenceLabel,
   isDocumentLevel,
   modelLabel,
-  SEVERITY_LABELS,
   sourceLabel,
   STATUS_LABELS,
 } from "@/lib/findingLabels";
 import type { Comment, CommentInput } from "@/lib/reviewDesk";
 import { cn } from "@/lib/utils";
 import type { DecisionInput, FindingStanding } from "@/lib/workflow";
+
+const SETTLED = ["fix_accepted", "override_confirmed", "resolved"];
+
+function readableDate(value: string): string {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? value
+    : date.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+}
 
 // Only inputs a person can read. Anything else in the manifest stays out.
 const MANIFEST_LABELS: Record<string, string> = {
@@ -86,7 +94,7 @@ function ContrastPreview({ finding }: { finding: Finding }) {
 
 function Tag({ children }: { children: React.ReactNode }) {
   return (
-    <span className="rounded-sm border px-1.5 text-xs text-muted-foreground">
+    <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
       {children}
     </span>
   );
@@ -150,7 +158,7 @@ function Precedents({ findingId }: { findingId: string }) {
           <li key={precedent.decision_id}>
             {precedent.reason}{" "}
             <span className="text-muted-foreground">
-              {precedent.reviewer}, {precedent.date}
+              {precedent.reviewer}, {readableDate(precedent.date)}
             </span>
           </li>
         ))}
@@ -252,24 +260,18 @@ export function FindingCard({
   return (
     <article
       className={cn(
-        "flex flex-col gap-2 rounded-lg border p-3 text-sm",
-        selected && "border-ring bg-accent",
+        "flex flex-col gap-3 rounded-xl border border-l-4 bg-card p-4 text-sm shadow-sm transition-shadow",
+        SEVERITY_EDGE[finding.severity],
+        selected ? "shadow-md ring-2 ring-ring" : "hover:shadow-md",
       )}
     >
       <div className="flex flex-wrap items-center gap-2">
-        <span
-          className={cn(
-            "rounded-sm px-1.5 font-medium text-foreground underline decoration-2 underline-offset-2",
-            SEVERITY_MARK[finding.severity],
-          )}
-        >
-          {SEVERITY_LABELS[finding.severity]}
-        </span>
-        <span className="text-muted-foreground">
-          {CHECK_LABELS[finding.check]}
-        </span>
+        <SeverityBadge severity={finding.severity} />
+        <span className="font-medium">{CHECK_LABELS[finding.check]}</span>
         {finding.verdict === "UNSURE" && (
-          <span className="font-medium">Needs a reviewer</span>
+          <span className="rounded-full bg-violet-100 px-2 py-0.5 text-xs font-semibold text-violet-900">
+            Needs a reviewer: the AI was unsure
+          </span>
         )}
         {confidence && <Tag>{confidence}</Tag>}
         <Tag>
@@ -281,7 +283,8 @@ export function FindingCard({
         type="button"
         aria-pressed={selected}
         onClick={() => onSelect(finding.id)}
-        className="cursor-pointer rounded-sm text-left focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+        title="Show this in the draft"
+        className="cursor-pointer rounded-sm text-left text-[0.95rem] leading-relaxed focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
       >
         {finding.explanation}
       </button>
@@ -292,19 +295,30 @@ export function FindingCard({
 
       <ContrastPreview finding={finding} />
 
-      <figure className="border-l-2 pl-3">
-        <blockquote>{finding.cited_text}</blockquote>
-        {source && (
-          <figcaption className="mt-1 text-xs text-muted-foreground">
-            {source}
-          </figcaption>
-        )}
+      <figure className="rounded-lg bg-muted/60 px-3 py-2">
+        <figcaption className="text-xs font-medium text-muted-foreground">
+          {finding.rule_id ? "Rule it breaks" : "Approved fact"}
+          {source && <span className="font-normal"> · {source}</span>}
+        </figcaption>
+        <blockquote className="mt-1">{finding.cited_text}</blockquote>
       </figure>
 
       <Precedents findingId={finding.id} />
 
-      <div className="flex flex-wrap items-center gap-2">
-        {outcome && <p className="w-full font-medium">{outcome}</p>}
+      <div className="flex flex-wrap items-center gap-2 border-t pt-3">
+        {outcome && (
+          <p
+            className={cn(
+              "w-full font-medium",
+              SETTLED.includes(standing?.status ?? "open")
+                ? "text-emerald-800"
+                : "text-amber-900",
+            )}
+          >
+            {SETTLED.includes(standing?.status ?? "open") ? "✓ " : "… "}
+            {outcome}
+          </p>
+        )}
         {standing?.fix_text && (
           <p className="w-full">Wording: {standing.fix_text}</p>
         )}

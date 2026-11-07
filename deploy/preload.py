@@ -25,8 +25,16 @@ PIECES = [
     ("LinkedIn post", "linkedin", "linkedin-post.html"),
     ("Spring banner", "banner", "banner.png"),
 ]
-# Must match FINAL_DRAFT in web/lib/demo.ts, which the tour looks for.
-FINAL_DRAFT = "Agency blog, final draft"
+# Must match FINAL_DRAFT in web/lib/demo.ts, which the tour looks for. It's its own
+# text, not a copy of a demo piece: settling it creates precedents, and a copy would
+# show an "earlier decision" on every finding of the original.
+FINAL_DRAFT = "Spring newsletter, final draft"
+FINAL_TEXT = (
+    "Spring is here, and so is a calmer first week. Tarnhollow Landing gives every new "
+    "starter a clear plan, from the welcome email to their first one-to-one. "
+    "It is guaranteed to halve the time it takes a new starter to feel at home. "
+    "Results vary by organisation."
+)
 
 
 def token(email: str) -> str:
@@ -100,6 +108,26 @@ def upload(creator, title, channel, name) -> tuple[str, str]:
     return content_id, review.json()["engine_review_id"]
 
 
+def paste(creator, title, channel, text) -> str:
+    created = creator.post(
+        "/content",
+        data={
+            "title": title, "channel": channel, "source": "agency",
+            "data_class": "public", "text": text,
+        },
+    )
+    created.raise_for_status()
+    content_id = created.json()["id"]
+    review = creator.post(f"/content/{content_id}/reviews")
+    review.raise_for_status()
+    ended = wait_for(creator, review.json()["engine_review_id"])
+    move(creator, content_id, "resolving")
+    print(f"  {title}: review {ended}")
+    if ended != "done":
+        raise SystemExit(f"{title}'s review didn't finish.")
+    return content_id
+
+
 def stage_for_manager(creator, reviewer, content_id) -> None:
     """Settles every finding, as a reviewer would, so the piece waits for the manager.
     The tour then shows a manager approving it and legal signing it off."""
@@ -153,7 +181,7 @@ def stage(admin: httpx.Client) -> int:
         if title not in have:
             upload(creator, title, channel, name)
     if FINAL_DRAFT not in have:
-        content_id, _ = upload(creator, FINAL_DRAFT, "blog", "agency-blog.docx")
+        content_id = paste(creator, FINAL_DRAFT, "email", FINAL_TEXT)
         stage_for_manager(creator, reviewer, content_id)
     print("Ready for judges.")
     return 0
