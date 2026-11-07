@@ -1,12 +1,8 @@
-import {
-  PlaceholderPage,
-  placeholderMetadata,
-} from "@/components/placeholder-page";
+import { InsightsScreen } from "@/components/insights-screen";
+import { placeholderMetadata } from "@/components/placeholder-page";
 
-const HREF = "/insights";
-
-export const metadata = placeholderMetadata(HREF);
+export const metadata = placeholderMetadata("/insights");
 
 export default function Page() {
-  return <PlaceholderPage href={HREF} />;
+  return <InsightsScreen />;
 }
