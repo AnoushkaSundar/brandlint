@@ -16,6 +16,7 @@ from typing import Annotated, Any, TypedDict
 from langgraph.graph import END, START, StateGraph
 from sqlalchemy.orm import Session
 
+from app.checks import PRODUCT_RULE_IDS
 from app.clients.gateway import llm_call
 from app.contracts import Finding, Gap
 from app.engine import critic
@@ -118,9 +119,13 @@ def flagged_chunk_ids(chunks: list[ParsedChunk], ctx: CheckContext) -> set[str]:
     }
 
 
+ProductChecks = Callable[[list[ParsedChunk], CheckContext, bool], list[Finding]]
+
+
 def known_rule_ids(ctx: CheckContext) -> set[str]:
     return {
         *(rule.id for rule in ctx.rules),
+        *PRODUCT_RULE_IDS,
         SEC_CONFIDENTIAL,
         SEC_HIDDEN_CONTENT,
         SEC_INJECTION,
@@ -134,6 +139,7 @@ def build_review_graph(
     model: str = PINNED_MODEL,
     cache: VerdictCache | None = None,
     claim_sink: claims_agent.ClaimSink | None = None,
+    product_checks: ProductChecks | None = None,
 ) -> Any:
     def tier0(state: ReviewState) -> dict:
         found = run_tier0(state["chunks"], state["ctx"], state["fmt"])
@@ -182,6 +188,17 @@ def build_review_graph(
         )
         return {"candidates": [found] if found else []}
 
+    def product(state: ReviewState) -> dict:
+        # Accessibility and the Visual agent need the original file, not just chunks.
+        chunks, ctx = state["chunks"], state["ctx"]
+        found = product_checks(chunks, ctx, bool(flagged_chunk_ids(chunks, ctx)))
+        candidates = []
+        for finding in found:
+            candidate = Candidate.from_finding(finding)
+            candidate.manifest = {"kind": "product"}
+            candidates.append(candidate)
+        return {"candidates": candidates}
+
     def critic_node(state: ReviewState) -> dict:
         ctx = state["ctx"]
         findings, gaps = critic.gate(
@@ -201,9 +218,12 @@ def build_review_graph(
     graph.add_node("document", document)
     graph.add_node("critic", critic_node)
     tracks = ["tier0", "language", "claims", "document"]
+    if product_checks is not None:
+        graph.add_node("product", product)
+        tracks.append("product")
     for track in tracks:
         graph.add_edge(START, track)
-    graph.add_edge(tracks, "critic")  # Waits for all four tracks.
+    graph.add_edge(tracks, "critic")  # Waits for every track.
     graph.add_edge("critic", END)
     return graph.compile()
 
@@ -220,13 +240,19 @@ def run_review(
     cache: VerdictCache | None = None,
     manifests: dict[str, dict] | None = None,
     claim_sink: claims_agent.ClaimSink | None = None,
+    product_checks: ProductChecks | None = None,
 ) -> tuple[list[Finding], list[Gap]]:
     """Runs the graph. `on_finding` gets each finding once, as soon as its track
     finishes, so code findings don't wait for the model. Tier 0 always goes first:
     a fast model's findings wait until the code checks have reported. Every one
     has passed the critic. The returned list is the final word."""
     graph = build_review_graph(
-        classify, gap_sink=gap_sink, model=model, cache=cache, claim_sink=claim_sink
+        classify,
+        gap_sink=gap_sink,
+        model=model,
+        cache=cache,
+        claim_sink=claim_sink,
+        product_checks=product_checks,
     )
     known_facts = {fact.id for fact in ctx.facts}
     collected: list[Candidate] = []

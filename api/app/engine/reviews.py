@@ -21,6 +21,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.admin.gaps import save_gaps
+from app.checks import run_product_checks
 from app.contracts import Chunk, ContentSource, Finding, Gap
 from app.db import get_sessionmaker
 from app.engine import graph, models
@@ -190,6 +191,23 @@ def _execute(
             as_of=date.today(),
         )
         manifests: dict[str, dict] = {}
+        model = policy.model_for(source.data_class)
+
+        def product_checks(
+            chunks: list[ParsedChunk], ctx: CheckContext, flagged: bool
+        ) -> list[Finding]:
+            return run_product_checks(
+                data,
+                check_format,
+                chunks,
+                ctx,
+                data_class=source.data_class.value,
+                session_factory=session_factory,
+                classify=classify,
+                model=model,
+                flagged=flagged,
+            )
+
         findings, _ = graph.run_review(
             chunks,
             ctx,
@@ -200,7 +218,8 @@ def _execute(
             cache=VerdictCache(session_factory),
             manifests=manifests,
             claim_sink=_claim_log(session_factory, run),
-            model=policy.model_for(source.data_class),
+            model=model,
+            product_checks=product_checks,
         )
         base = {
             "fmt": check_format,

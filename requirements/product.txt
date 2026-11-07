@@ -2,3 +2,5 @@
 argon2-cffi==25.1.0
 PyJWT==2.15.1
 python-multipart==0.0.33
+opencv-python-headless==4.10.0.84  # logo matching and dominant colours (block 7)
+numpy==2.1.3

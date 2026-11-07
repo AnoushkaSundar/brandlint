@@ -155,6 +155,9 @@ def replay(finding_id: str, session: Session, classify: ClassifyFn) -> dict | No
     if not manifest:
         raise NotReplayable("This verdict has no stored inputs.")
 
+    if manifest.get("kind") == "product":
+        # These read the original file, which isn't kept with the finding.
+        raise NotReplayable("This check needs the original file to run again.")
     if manifest.get("kind") == "language":
         verdict, spans = _replay_language(finding, manifest, session, classify)
     elif manifest.get("kind") == "document":
