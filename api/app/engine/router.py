@@ -85,13 +85,15 @@ def _review_routes() -> APIRouter:
         if finding is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Finding not found")
         require_review(finding.review_id, user, session)
-        classify = graph.gateway_classify(
-            org_sessions(get_sessionmaker(), bound_org(session))
-        )
+        # Both voters call the model for the caller's org.
+        factory = org_sessions(get_sessionmaker(), bound_org(session))
+        classify = graph.gateway_classify(factory)
         try:
             result = replay.replay(
-                finding_id, session, classify,
-                graph.gateway_classify(get_sessionmaker(), policy.SECOND_MODEL),
+                finding_id,
+                session,
+                classify,
+                graph.gateway_classify(factory, policy.SECOND_MODEL),
             )
         except replay.NotReplayable as exc:
             raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from None

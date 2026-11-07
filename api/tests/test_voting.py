@@ -12,6 +12,7 @@ from app.engine.checks import CheckContext
 from app.engine.chunking import ParsedChunk, sha256_text
 from app.gateway import llm, masking, policy
 from app.gateway.models import GatewayLog
+from app.tenancy import bind_org
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
@@ -227,6 +228,7 @@ def session():
     engine = create_engine("sqlite://")
     GatewayLog.__table__.create(engine)
     with Session(engine) as s:
+        bind_org(s, "00000000-0000-4000-8000-000000000001")
         yield s
 
 
@@ -235,7 +237,7 @@ def test_the_gateway_itself_refuses_to_send_private_data_to_the_free_tier(
     monkeypatch, session, data_class
 ):
     """The policy table is the wall, in case a caller forgets to check."""
-    monkeypatch.setattr(masking, "deny_list", lambda bind: masking.DenyList((), frozenset()))
+    monkeypatch.setattr(masking, "deny_list", lambda bind, org_id=None: masking.DenyList((), frozenset()))
     monkeypatch.setattr(llm, "_chat_completion", never)
     with pytest.raises(llm.PolicyBlocked):
         llm.call(
