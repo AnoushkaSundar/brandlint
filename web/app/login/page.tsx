@@ -1,7 +1,7 @@
 import { Check } from "lucide-react";
 import type { Metadata } from "next";
 
-import { StartDemo } from "@/components/demo-logins";
+import { DemoRolePicker, StartDemo } from "@/components/demo-logins";
 import { LoginForm } from "@/components/login-form";
 import { DEMO_MODE } from "@/lib/demo";
 import { safeNextPath } from "@/lib/navigation";
@@ -25,7 +25,19 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
             ? "No account needed. The tour shows you what to click and why."
             : "Use your work email and password."}
         </p>
-        {DEMO_MODE ? <StartDemo /> : <LoginForm next={safeNextPath(next)} />}
+        {DEMO_MODE ? (
+          <div className="flex flex-col gap-6">
+            <StartDemo />
+            <div className="flex items-center gap-3">
+              <div className="h-px flex-1 bg-border" />
+              <span className="text-xs text-muted-foreground">or jump straight to a role</span>
+              <div className="h-px flex-1 bg-border" />
+            </div>
+            <DemoRolePicker />
+          </div>
+        ) : (
+          <LoginForm next={safeNextPath(next)} />
+        )}
       </div>
     </main>
   );
