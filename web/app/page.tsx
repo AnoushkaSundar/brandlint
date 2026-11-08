@@ -303,7 +303,7 @@ export default function Home() {
               Everyone has a part to play.
             </h2>
             <p className="mt-3 text-muted-foreground">
-              The demo lets you step into each role and see exactly what they can and can't do.
+              The demo lets you step into each role and see exactly what they can and can&apos;t do.
             </p>
           </AnimatedEntry>
           <ul className="mt-10 grid gap-4 md:grid-cols-5">
