@@ -81,7 +81,7 @@ function SampleFinding() {
   return (
     <figure
       aria-label="An example finding"
-      className="animate-float rounded-2xl border bg-background/95 p-6 shadow-2xl backdrop-blur-sm"
+      className="animate-float rounded-2xl border bg-background/95 p-6 shadow-2xl backdrop-blur-sm text-foreground"
     >
       <div className="flex flex-wrap items-center gap-2 text-xs">
         <span className="rounded-full bg-destructive/15 px-2.5 py-1 font-semibold text-destructive">
