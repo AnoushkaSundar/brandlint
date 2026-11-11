@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.auth.models import User
@@ -21,6 +20,7 @@ from app.contracts import (
     Severity,
     Verdict,
 )
+from app.tenancy import scoped
 from app.workflow.fixes import can_apply, fix_span, latest_offer, spans_overlap
 from app.workflow.models import AuditLog, Decision, Review
 
@@ -49,7 +49,7 @@ class FindingProgress:
 def finding_progress(session: Session, review: Review) -> dict[str, FindingProgress]:
     """The newest decision on each finding in a review decides where it stands."""
     decisions = session.scalars(
-        select(Decision)
+        scoped(session, Decision)
         .where(Decision.review_id == review.id)
         .order_by(Decision.created_at)
     )
@@ -74,9 +74,9 @@ def finding_key(finding: Finding) -> FindingKey:
 def refused_overrides(session: Session, content_id: str) -> set[FindingKey]:
     """Issues whose override a reviewer rejected, on any review of this content."""
     rows = session.execute(
-        select(Decision.finding_id, Review.engine_review_id)
-        .join(Review, Decision.review_id == Review.id)
-        .join(ContentVersion, Review.content_version_id == ContentVersion.id)
+        scoped(session, Decision, Decision.finding_id, Review.engine_review_id)
+        .scoped_join(session, Review, Decision.review_id == Review.id)
+        .scoped_join(session, ContentVersion, Review.content_version_id == ContentVersion.id)
         .where(
             ContentVersion.content_id == content_id,
             Decision.status == FindingStatus.override_rejected.value,
@@ -275,7 +275,7 @@ def record_decision(
 
 
 def list_decisions(session: Session, since: datetime | None = None) -> Sequence[Decision]:
-    query = select(Decision).order_by(Decision.created_at)
+    query = scoped(session, Decision).order_by(Decision.created_at)
     if since is not None:
         query = query.where(Decision.created_at >= since)
     return session.scalars(query).all()

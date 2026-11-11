@@ -2,7 +2,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
-from sqlalchemy import func, select
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.admin.rulebook import current_rulebook_version
@@ -24,6 +24,7 @@ from app.content.schemas import (
     VersionOut,
 )
 from app.contracts import ContentSource, ContentState, DataClass, Role
+from app.tenancy import scoped, scoped_get
 from app.workflow.models import Review
 from app.workflow.transitions import move_content
 
@@ -109,7 +110,7 @@ def _add_version(
     file_name: str | None,
 ) -> ContentVersion:
     latest = session.scalar(
-        select(func.max(ContentVersion.version)).where(
+        scoped(session, ContentVersion, func.max(ContentVersion.version)).where(
             ContentVersion.content_id == content.id
         )
     )
@@ -122,7 +123,7 @@ def _add_version(
     session.add(version)
     session.flush()
     if upload is not None:
-        version.file_ref = storage.save_upload(version.id, upload)
+        version.file_ref = storage.save_upload(user.org_id, version.id, upload)
         version.file_name = file_name
     return version
 
@@ -130,7 +131,7 @@ def _add_version(
 def _versions(session: Session, content_id: str) -> list[ContentVersion]:
     return list(
         session.scalars(
-            select(ContentVersion)
+            scoped(session, ContentVersion)
             .where(ContentVersion.content_id == content_id)
             .order_by(ContentVersion.version.desc())
         )
@@ -150,7 +151,7 @@ def _detail(session: Session, content: Content) -> ContentDetail:
 
 @router.get("", response_model=list[ContentOut])
 def list_content(user: CurrentUser, session: SessionDep) -> list[Content]:
-    query = select(Content).order_by(Content.created_at.desc())
+    query = scoped(session, Content).order_by(Content.created_at.desc())
     if user.role == Role.creator.value:
         query = query.where(Content.creator_id == user.id)
     return list(session.scalars(query))
@@ -275,7 +276,7 @@ def start_review(content_id: str, user: Creator, session: SessionDep) -> Review:
     review = Review(
         content_version_id=latest.id,
         engine_review_id=engine_client.start_review(
-            latest.id, content.channel, rulebook_version, source
+            latest.id, content.channel, rulebook_version, source, org_id=user.org_id
         ),
         channel=content.channel,
         rulebook_version=rulebook_version,
@@ -296,10 +297,13 @@ def start_review(content_id: str, user: Creator, session: SessionDep) -> Review:
 def download_file(
     version_id: str, user: CurrentUser, session: SessionDep
 ) -> FileResponse:
-    version = session.get(ContentVersion, version_id)
+    version = scoped_get(session, ContentVersion, version_id)
     if version is None or version.file_ref is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "File not found")
     readable_content(version.content_id, user, session)
+    # The version was found inside the org, and its file must be in the org's folder too.
+    if not storage.in_org_folder(version.file_ref, user.org_id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "File not found")
 
     path = storage.stored_path(version.file_ref)
     if not path.is_file():

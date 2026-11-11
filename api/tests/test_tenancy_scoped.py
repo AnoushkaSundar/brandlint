@@ -10,7 +10,6 @@ from app.auth.dependencies import SessionDep
 from app.auth.models import Organization, User
 from app.auth.security import create_token
 from app.content import models as content_models  # noqa: F401
-from app.content.models import Content
 from app.db import Base, get_session
 from app.tenancy import (
     NoOrg,
@@ -135,10 +134,10 @@ def test_scoped_refuses_a_model_without_org_id(session):
         scoped(session, Note, org_id=A)
 
 
-def test_the_real_tables_that_have_no_org_id_yet_are_refused(session):
-    """Block 3 and 4 add org_id to these. Until then nothing can scope them by mistake."""
-    with pytest.raises(NotTenantModel, match="Content"):
-        scoped(session, Content, org_id=A)
+def test_a_shared_table_is_refused(session):
+    """Organizations belong to nobody, so there is nothing to scope them by."""
+    with pytest.raises(NotTenantModel, match="Organization"):
+        scoped(session, Organization, org_id=A)
 
 
 def test_scoped_needs_an_org(session):

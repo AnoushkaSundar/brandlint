@@ -17,6 +17,7 @@ from app.db import get_sessionmaker
 from app.engine import evaluation, graph
 from app.governance import agent, spot_checks
 from app.governance.models import Proposal as ProposalRow
+from app.tenancy import bound_org, org_sessions
 
 
 class ProposalDecision(BaseModel):
@@ -32,7 +33,9 @@ def _routes() -> APIRouter:
         dependencies=[Depends(require_roles(Role.admin))],
     )
     def run(session: SessionDep) -> list[Proposal]:
-        classify = graph.gateway_classify(get_sessionmaker())
+        classify = graph.gateway_classify(
+            org_sessions(get_sessionmaker(), bound_org(session))
+        )
 
         def gate(proposal, rule):
             return evaluation.gate(

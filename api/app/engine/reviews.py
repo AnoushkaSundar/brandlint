@@ -32,6 +32,7 @@ from app.engine.checks import CheckContext
 from app.engine.chunking import ParsedChunk, chunk_document
 from app.engine.parsers import parse
 from app.gateway import policy
+from app.tenancy import org_sessions
 
 logger = logging.getLogger(__name__)
 
@@ -245,8 +246,10 @@ def start_review(
     session_factory: SessionFactory | None = None,
     brand_loader: BrandLoader | None = None,
     gap_sink: GapSink | None = None,
+    org_id: str | None = None,
 ) -> str:
-    session_factory = session_factory or get_sessionmaker()
+    # Every session the review opens belongs to the org that started it.
+    session_factory = org_sessions(session_factory or get_sessionmaker(), org_id)
     run = ReviewRun(
         review_id=f"rev-{uuid.uuid4()}", content_version_id=content_version_id
     )

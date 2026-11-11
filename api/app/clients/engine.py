@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app.clients.flags import use_mock
 from app.contracts import Chunk, ContentSource, Finding, FixSuggestion
 from app.db import get_sessionmaker
+from app.tenancy import org_sessions
 
 UNREADABLE = "This file couldn't be read. It may be damaged, so upload a new version."
 
@@ -14,8 +15,13 @@ def start_review(
     channel: str,
     rulebook_version: int,
     source: ContentSource | None = None,
+    *,
+    org_id: str | None = None,
 ) -> str:
-    """Starts an AI review and returns its id. The mock ignores `source`."""
+    """Starts an AI review and returns its id. The mock ignores `source` and `org_id`.
+
+    The review runs in the background, so the org it belongs to is passed along.
+    """
     if use_mock("ENGINE"):
         return mock_engine.start_review(channel)["review_id"]
     if source is None:
@@ -27,7 +33,9 @@ def start_review(
         reviews.check_readable(source)
     except reviews.UnreadableContent:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, UNREADABLE) from None
-    return reviews.start_review(content_version_id, channel, rulebook_version, source)
+    return reviews.start_review(
+        content_version_id, channel, rulebook_version, source, org_id=org_id
+    )
 
 
 def list_findings(engine_review_id: str) -> list[Finding]:
@@ -71,7 +79,9 @@ def review_status(review_id: str, session: Session) -> str:
     return reviews.review_status(review_id, session)
 
 
-def request_fix(finding_id: str, attempt: int) -> FixSuggestion:
+def request_fix(
+    finding_id: str, attempt: int, *, org_id: str | None = None
+) -> FixSuggestion:
     """Asks the engine for a fix. The workflow stores it and enforces the two attempts."""
     if use_mock("ENGINE"):
         return FixSuggestion.model_validate(mock_engine.suggest_fix(finding_id, attempt))
@@ -79,7 +89,8 @@ def request_fix(finding_id: str, attempt: int) -> FixSuggestion:
     from app.engine import graph
     from app.engine.agents import fixer
 
-    sessions = get_sessionmaker()
+    # The fixer calls a model from sessions of its own, which belong to the caller's org.
+    sessions = org_sessions(get_sessionmaker(), org_id)
     with sessions() as session:
         try:
             return fixer.request_fix(

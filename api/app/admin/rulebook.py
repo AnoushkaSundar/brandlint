@@ -1,10 +1,11 @@
 """The rulebook a review runs against. The engine calls these functions directly."""
 
-from sqlalchemy import func, select
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.admin.models import Rule as RuleRow
 from app.contracts import Rule, RuleStatus
+from app.tenancy import scoped
 
 
 class RulebookNotFound(LookupError):
@@ -19,7 +20,7 @@ def current_rulebook_version(session: Session | None = None) -> int:
     if session is None:
         return 1
     newest = session.scalar(
-        select(func.max(RuleRow.version)).where(
+        scoped(session, RuleRow, func.max(RuleRow.version)).where(
             RuleRow.status == RuleStatus.approved.value
         )
     )
@@ -42,7 +43,7 @@ def rulebook_at(session: Session, version: int | None = None) -> list[Rule]:
         raise RulebookNotFound(f"Rulebook version {pinned} doesn't exist yet")
 
     rows = session.scalars(
-        select(RuleRow)
+        scoped(session, RuleRow)
         .where(RuleRow.version <= pinned, RuleRow.status != RuleStatus.draft.value)
         .order_by(RuleRow.id, RuleRow.version)
     ).all()

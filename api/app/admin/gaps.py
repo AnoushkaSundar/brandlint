@@ -2,11 +2,11 @@
 
 from collections.abc import Iterable
 
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.admin.models import Gap as GapRow
 from app.contracts import Gap
+from app.tenancy import scoped
 
 
 def save_gaps(session: Session, gaps: Iterable[Gap]) -> int:
@@ -16,7 +16,7 @@ def save_gaps(session: Session, gaps: Iterable[Gap]) -> int:
     log keeps its original time.
     """
     incoming = {gap.id: gap for gap in gaps}
-    known = set(session.scalars(select(GapRow.id).where(GapRow.id.in_(list(incoming)))))
+    known = set(session.scalars(scoped(session, GapRow, GapRow.id).where(GapRow.id.in_(list(incoming)))))
     new = [gap for gap_id, gap in incoming.items() if gap_id not in known]
     session.add_all(
         GapRow(

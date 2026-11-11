@@ -6,10 +6,12 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.auth.defaults import new_id, utc_now
 from app.db import Base
+from app.tenancy.columns import org_column
 
 
 class Review(Base):
     __tablename__ = "reviews"
+    org_id: Mapped[str] = org_column()
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     content_version_id: Mapped[str] = mapped_column(
@@ -27,6 +29,7 @@ class Review(Base):
 
 class ReviewStateLog(Base):
     __tablename__ = "review_state_log"
+    org_id: Mapped[str] = org_column()
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     content_id: Mapped[str] = mapped_column(ForeignKey("content.id"), index=True)
@@ -41,6 +44,7 @@ class ReviewStateLog(Base):
 
 class Decision(Base):
     __tablename__ = "decisions"
+    org_id: Mapped[str] = org_column()
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     # Finding ids repeat between mock reviews, so decisions are scoped to a review.
@@ -63,6 +67,7 @@ class FixOffer(Base):
     """What the engine suggested. Accepting a fix uses this, never the request."""
 
     __tablename__ = "fix_offers"
+    org_id: Mapped[str] = org_column()
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     review_id: Mapped[str] = mapped_column(ForeignKey("reviews.id"), index=True)
@@ -78,6 +83,7 @@ class FixOffer(Base):
 
 class Comment(Base):
     __tablename__ = "comments"
+    org_id: Mapped[str] = org_column()
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     content_version_id: Mapped[str] = mapped_column(
@@ -97,6 +103,7 @@ class Comment(Base):
 
 class AuditLog(Base):
     __tablename__ = "audit_log"
+    org_id: Mapped[str] = org_column()
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     actor_id: Mapped[str] = mapped_column(ForeignKey("users.id"))

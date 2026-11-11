@@ -11,6 +11,7 @@ is an error, never a way to look at another org.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 from sqlalchemy import (
@@ -21,7 +22,6 @@ from sqlalchemy import (
     and_,
     delete,
     inspect,
-    select,
     update,
 )
 from sqlalchemy.exc import NoInspectionAvailable
@@ -30,6 +30,27 @@ from sqlalchemy.orm import Mapper, Session
 from app.tenancy.errors import NoOrg, NotTenantModel, OrgMismatch
 
 ORG_KEY = "org_id"
+
+
+class ScopedSelect(Select):
+    """A select that can join other tenant models and keep the join inside the org.
+
+    `scoped(session, Content).scoped_join(session, Review, on)` reads like `.join` and
+    can't forget the org.
+    """
+
+    inherit_cache = True
+
+    def scoped_join(
+        self,
+        session: Session,
+        model: type,
+        onclause: ColumnElement[bool],
+        *,
+        outer: bool = False,
+        org_id: str | None = None,
+    ) -> ScopedSelect:
+        return scoped_join(self, session, model, onclause, outer=outer, org_id=org_id)
 
 
 def bind_org(session: Session, org_id: str) -> None:
@@ -85,8 +106,8 @@ def scoped(
     """
     criterion = org_criterion(session, model, org_id)
     if entities:
-        return select(*entities).select_from(model).where(criterion)
-    return select(model).where(criterion)
+        return ScopedSelect(*entities).select_from(model).where(criterion)
+    return ScopedSelect(model).where(criterion)
 
 
 def scoped_join(
@@ -128,6 +149,25 @@ def scoped_get(
         *[column == value for column, value in zip(keys, values, strict=True)]
     )
     return session.scalars(statement).first()
+
+
+def org_sessions(
+    factory: Callable[[], Session], org_id: str | None
+) -> Callable[[], Session]:
+    """A session factory whose sessions belong to one org, for work outside a request.
+
+    A review runs in a background thread and opens its own sessions, so the org the request
+    was in has to travel with it. With no org the factory is returned as it was.
+    """
+    if org_id is None:
+        return factory
+
+    def make() -> Session:
+        session = factory()
+        bind_org(session, org_id)
+        return session
+
+    return make
 
 
 def scoped_update(

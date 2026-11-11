@@ -1,14 +1,6 @@
 {
-  "total": 108,
+  "total": 50,
   "files": {
-    "api/app/admin/brand.py": 3,
-    "api/app/admin/edits.py": 2,
-    "api/app/admin/gaps.py": 1,
-    "api/app/admin/ingest.py": 9,
-    "api/app/admin/rulebook.py": 2,
-    "api/app/content/access.py": 3,
-    "api/app/content/rereview.py": 1,
-    "api/app/content/router.py": 4,
     "api/app/engine/access.py": 2,
     "api/app/engine/agents/fixer.py": 2,
     "api/app/engine/cache.py": 2,
@@ -20,14 +12,7 @@
     "api/app/governance/agent.py": 7,
     "api/app/governance/router.py": 1,
     "api/app/governance/spot_checks.py": 3,
-    "api/app/insights/signals.py": 4,
     "api/app/memory/edges.py": 9,
-    "api/app/memory/queries.py": 10,
-    "api/app/workflow/comments.py": 8,
-    "api/app/workflow/decisions.py": 5,
-    "api/app/workflow/fixes.py": 2,
-    "api/app/workflow/history.py": 11,
-    "api/app/workflow/queue.py": 1,
-    "api/app/workflow/router.py": 2
+    "api/app/memory/queries.py": 10
   }
 }

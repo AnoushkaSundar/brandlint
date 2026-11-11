@@ -3,13 +3,13 @@
 import re
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.auth.models import User
 from app.clients import engine as engine_client
 from app.content.models import Content, ContentVersion
 from app.contracts import Role
+from app.tenancy import scoped, scoped_get
 from app.workflow.models import Comment, Review
 from app.workflow.schemas import CommentIn, CommentOut
 
@@ -19,7 +19,7 @@ MENTION = re.compile(r"(?<![\w.])@([\w.-]+)")
 def _names(session: Session, ids: set[str]) -> dict[str, str]:
     if not ids:
         return {}
-    users = session.scalars(select(User).where(User.id.in_(ids)))
+    users = session.scalars(scoped(session, User).where(User.id.in_(ids)))
     return {user.id: user.name for user in users}
 
 
@@ -31,7 +31,7 @@ def _mentioned(session: Session, body: str, content: Content) -> list[str]:
     handles = {handle.lower().rstrip(".-") for handle in MENTION.findall(body)}
     if not handles:
         return []
-    users = session.scalars(select(User).order_by(User.email))
+    users = session.scalars(scoped(session, User).order_by(User.email))
     return [
         user.id
         for user in users
@@ -42,8 +42,8 @@ def _mentioned(session: Session, body: str, content: Content) -> list[str]:
 
 def list_comments(session: Session, content: Content) -> list[CommentOut]:
     comments = session.scalars(
-        select(Comment)
-        .join(ContentVersion, Comment.content_version_id == ContentVersion.id)
+        scoped(session, Comment)
+        .scoped_join(session, ContentVersion, Comment.content_version_id == ContentVersion.id)
         .where(ContentVersion.content_id == content.id)
         .order_by(Comment.created_at)
     ).all()
@@ -70,7 +70,7 @@ def list_comments(session: Session, content: Content) -> list[CommentOut]:
 def _check_target(session: Session, version: ContentVersion, body: CommentIn) -> None:
     """A comment can only point at a finding or text that belongs to this version."""
     reviews = session.scalars(
-        select(Review).where(Review.content_version_id == version.id)
+        scoped(session, Review).where(Review.content_version_id == version.id)
     ).all()
     if body.finding_id:
         known = {
@@ -102,14 +102,14 @@ def add_comment(session: Session, content: Content, author: User, body: CommentI
             status.HTTP_422_UNPROCESSABLE_CONTENT, "Write something first."
         )
 
-    version = session.get(ContentVersion, body.content_version_id)
+    version = scoped_get(session, ContentVersion, body.content_version_id)
     if version is None or version.content_id != content.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Version not found")
 
-    parent = session.get(Comment, body.parent_id) if body.parent_id else None
+    parent = scoped_get(session, Comment, body.parent_id) if body.parent_id else None
     if body.parent_id:
         # A reply can come from a newer version, so it only has to be the same piece.
-        thread = session.get(ContentVersion, parent.content_version_id) if parent else None
+        thread = scoped_get(session, ContentVersion, parent.content_version_id) if parent else None
         if thread is None or thread.content_id != content.id:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Comment not found")
         version = thread

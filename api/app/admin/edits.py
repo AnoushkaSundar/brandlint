@@ -11,7 +11,6 @@ from pathlib import Path
 
 from fastapi import HTTPException, status
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.admin.models import Asset as AssetRow
@@ -21,6 +20,7 @@ from app.admin.rulebook import current_rulebook_version
 from app.auth.models import User
 from app.content import storage
 from app.contracts import Asset, AssetKind, DataClass, Fact, Term
+from app.tenancy import scoped, scoped_get
 from app.workflow.models import AuditLog
 
 HEX = re.compile(r"^#[0-9A-Fa-f]{6}$")
@@ -85,7 +85,9 @@ def _audit(
 
 
 def _next_id(session: Session, model: type, prefix: str) -> str:
-    ids = session.scalars(select(model.id).where(model.id.like(f"{prefix}%")))
+    ids = session.scalars(
+        scoped(session, model, model.id).where(model.id.like(f"{prefix}%"))
+    )
     numbers = [
         int(value[len(prefix) :]) for value in ids if value[len(prefix) :].isdigit()
     ]
@@ -94,7 +96,7 @@ def _next_id(session: Session, model: type, prefix: str) -> str:
 
 def _latest_fact(session: Session, fact_id: str) -> FactRow | None:
     return session.scalar(
-        select(FactRow)
+        scoped(session, FactRow)
         .where(FactRow.id == fact_id)
         .order_by(FactRow.version.desc())
         .limit(1)
@@ -178,7 +180,7 @@ def create_term(session: Session, body: TermIn, actor: User) -> Term:
 
 
 def update_term(session: Session, term_id: str, body: TermIn, actor: User) -> Term:
-    row = session.get(TermRow, term_id)
+    row = scoped_get(session, TermRow, term_id)
     if row is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Term not found")
     before = _term(row).model_dump(mode="json")
@@ -245,7 +247,7 @@ def add_image_asset(
         )
 
     asset_id = _next_id(session, AssetRow, "A-")
-    file_ref = f"assets/{uuid.uuid4().hex}{Path(file_name).suffix.lower()}"
+    file_ref = f"{actor.org_id}/assets/{uuid.uuid4().hex}{Path(file_name).suffix.lower()}"
     target = storage.stored_path(file_ref)
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_bytes(checked.data)

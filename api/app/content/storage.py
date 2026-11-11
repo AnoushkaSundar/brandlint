@@ -66,15 +66,36 @@ def upload_dir() -> Path:
     return path
 
 
-def save_upload(version_id: str, upload: CheckedUpload) -> str:
-    """Stores the file under a generated name, never the name the user supplied."""
-    file_ref = f"{version_id}{upload.extension}"
-    (upload_dir() / file_ref).write_bytes(upload.data)
+def save_upload(org_id: str, version_id: str, upload: CheckedUpload) -> str:
+    """Stores the file in its org's folder, under a generated name, never the user's name."""
+    file_ref = f"{org_id}/{version_id}{upload.extension}"
+    target = stored_path(file_ref)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(upload.data)
     return file_ref
 
 
 def stored_path(file_ref: str) -> Path:
-    return upload_dir() / file_ref
+    """Where a file lives. A path that climbs out of the upload folder is refused."""
+    root = upload_dir().resolve()
+    path = (root / file_ref).resolve()
+    if root not in path.parents:
+        raise ValueError("That path is outside the upload folder.")
+    return path
+
+
+def in_org_folder(file_ref: str, org_id: str) -> bool:
+    """Whether the org may read this file.
+
+    Files are kept at `<org_id>/<name>`. Files stored before orgs existed have no folder,
+    and they all belong to the demo org.
+    """
+    from app.auth.orgs import DEMO_ORG_ID
+
+    folder, separator, _ = file_ref.partition("/")
+    if not separator:
+        return str(org_id).lower() == DEMO_ORG_ID
+    return folder.lower() == str(org_id).lower()
 
 
 def is_image(file_ref: str) -> bool:
