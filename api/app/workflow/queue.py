@@ -2,13 +2,13 @@
 
 import logging
 
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.clients import engine as engine_client
 from app.content.access import latest_review
 from app.content.models import Content
 from app.contracts import ContentState, Finding, FindingStatus, Severity, Verdict
+from app.tenancy import scoped
 from app.workflow.decisions import FindingProgress, finding_progress
 from app.workflow.schemas import QueueItem
 
@@ -75,7 +75,7 @@ def reviewer_queue(session: Session) -> tuple[list[QueueItem], list[str]]:
     One piece failing mustn't hide everyone else's work, so it's reported and skipped.
     """
     contents = session.scalars(
-        select(Content).where(Content.state.in_(REVIEWER_STATES))
+        scoped(session, Content).where(Content.state.in_(REVIEWER_STATES))
     ).all()
     items: list[QueueItem] = []
     unavailable: list[str] = []

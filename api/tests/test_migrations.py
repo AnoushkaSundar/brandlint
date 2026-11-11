@@ -20,7 +20,8 @@ from tests.test_models import PRODUCT_TABLES
 API_DIR = Path(__file__).resolve().parents[1]
 # The head before the organisations migration, and the revision under test.
 PREVIOUS = "alapan_0004_finding_manifest"
-REVISION = "anoushka_0006"
+ORGS = "anoushka_0006"
+REVISION = "anoushka_0007"
 
 
 @pytest.fixture
@@ -96,7 +97,7 @@ def test_the_org_migration_puts_existing_users_in_the_demo_org(
     command.upgrade(alembic_config, PREVIOUS)
     add_old_users(database)
 
-    command.upgrade(alembic_config, REVISION)
+    command.upgrade(alembic_config, ORGS)
 
     with Session(database) as session:
         orgs = session.scalars(select(Organization)).all()
@@ -109,7 +110,7 @@ def test_the_org_migration_puts_existing_users_in_the_demo_org(
 
 
 def test_after_the_org_migration_a_user_needs_an_org(database, alembic_config):
-    command.upgrade(alembic_config, REVISION)
+    command.upgrade(alembic_config, ORGS)
 
     with pytest.raises(IntegrityError), database.begin() as connection:
         connection.execute(
@@ -120,7 +121,7 @@ def test_after_the_org_migration_a_user_needs_an_org(database, alembic_config):
 
 
 def test_the_org_migration_has_an_index_on_users(database, alembic_config):
-    command.upgrade(alembic_config, REVISION)
+    command.upgrade(alembic_config, ORGS)
 
     indexes = {
         tuple(index["column_names"]) for index in inspect(database).get_indexes("users")
@@ -131,7 +132,7 @@ def test_the_org_migration_has_an_index_on_users(database, alembic_config):
 def test_the_org_migration_downgrades_and_keeps_the_users(database, alembic_config):
     command.upgrade(alembic_config, PREVIOUS)
     add_old_users(database)
-    command.upgrade(alembic_config, REVISION)
+    command.upgrade(alembic_config, ORGS)
 
     command.downgrade(alembic_config, PREVIOUS)
 
@@ -143,11 +144,11 @@ def test_the_org_migration_downgrades_and_keeps_the_users(database, alembic_conf
 
 
 def test_the_org_migration_can_run_again_after_a_downgrade(database, alembic_config):
-    command.upgrade(alembic_config, REVISION)
+    command.upgrade(alembic_config, ORGS)
     command.downgrade(alembic_config, PREVIOUS)
     add_old_users(database)
 
-    command.upgrade(alembic_config, REVISION)
+    command.upgrade(alembic_config, ORGS)
 
     with Session(database) as session:
         assert {user.org_id for user in session.scalars(select(User))} == {DEMO_ORG_ID}
@@ -157,3 +158,167 @@ def test_the_demo_org_id_in_the_migration_matches_the_app():
     migration = next((API_DIR / "migrations" / "versions").glob("anoushka_0006_*.py"))
 
     assert DEMO_ORG_ID in migration.read_text(encoding="utf-8")
+
+
+# Block 3: the product tables
+
+ORG_TABLES = [
+    "content",
+    "content_versions",
+    "reviews",
+    "review_state_log",
+    "decisions",
+    "fix_offers",
+    "comments",
+    "audit_log",
+    "rules",
+    "facts",
+    "terms",
+    "assets",
+    "ingest_jobs",
+    "gaps",
+]
+NOW = "'2026-01-01 00:00:00'"
+DEMO_HEX = DEMO_ORG_ID.replace("-", "")
+OLD_ROWS = [
+    f"INSERT INTO users (id, email, name, password_hash, role, tag, created_at, org_id) VALUES ('u1', 'u@x.y', 'U', 'h', 'creator', NULL, {NOW}, '{DEMO_HEX}')",
+    f"INSERT INTO content (id, title, channel, source, data_class, state, creator_id, created_at) VALUES ('c1', 'T', 'blog', 's', 'public', 'draft', 'u1', {NOW})",
+    f"INSERT INTO content_versions (id, content_id, version, text, fixes_applied, created_by, created_at) VALUES ('v1', 'c1', 1, 't', 0, 'u1', {NOW})",
+    f"INSERT INTO reviews (id, content_version_id, engine_review_id, channel, rulebook_version, created_at) VALUES ('r1', 'v1', 'e1', 'blog', 1, {NOW})",
+    f"INSERT INTO review_state_log (id, content_id, from_state, to_state, actor_id, created_at) VALUES ('l1', 'c1', 'draft', 'ai_review', 'u1', {NOW})",
+    f"INSERT INTO decisions (id, review_id, finding_id, actor_id, role, action, status, created_at) VALUES ('d1', 'r1', 'f1', 'u1', 'creator', 'override', 'override_pending', {NOW})",
+    f"INSERT INTO fix_offers (id, review_id, finding_id, attempt, original, suggested, diff, created_at) VALUES ('o1', 'r1', 'f1', 1, 'a', 'b', 'c', {NOW})",
+    f"INSERT INTO comments (id, content_version_id, finding_id, author_id, body, mentions, created_at) VALUES ('m1', 'v1', NULL, 'u1', 'b', '[]', {NOW})",
+    f"INSERT INTO audit_log (id, actor_id, role, action, target_type, target_id, created_at) VALUES ('a1', 'u1', 'admin', 'x', 'fact', 'F-001', {NOW})",
+    "INSERT INTO rules (id, version, type, text, clause_ref, severity, channel_scope, status) VALUES ('R1', 1, 'judgment', 't', 'c1', 'low', '[]', 'approved')",
+    "INSERT INTO rules (id, version, type, text, clause_ref, severity, channel_scope, status) VALUES ('R1', 2, 'judgment', 't2', 'c1', 'low', '[]', 'approved')",
+    "INSERT INTO facts (id, version, statement, value, source_doc, owner, data_class) VALUES ('F-001', 1, 's', 'v', 'd', 'o', 'public')",
+    "INSERT INTO terms (id, preferred, banned) VALUES ('T-001', 'p', '[]')",
+    "INSERT INTO assets (id, kind, file_ref, meta) VALUES ('A-001', 'palette', '', '{}')",
+    f"INSERT INTO ingest_jobs (id, file_ref, status, created_by, created_at) VALUES ('j1', 'g.pdf', 'done', 'u1', {NOW})",
+    f"INSERT INTO gaps (id, review_id, \"check\", text, explanation, created_at) VALUES ('g1', 'e1', 'tone', 't', 'e', {NOW})",
+]
+
+
+def add_old_product_rows(database):
+    with database.begin() as connection:
+        for statement in OLD_ROWS:
+            connection.execute(text(statement))
+
+
+def rows_in_the_demo_org(database, table):
+    import sqlalchemy as sa
+
+    reference = sa.table(table, sa.column("org_id", sa.Uuid(as_uuid=False)))
+    with database.connect() as connection:
+        return (
+            connection.scalar(sa.select(sa.func.count()).select_from(reference)),
+            connection.scalar(
+                sa.select(sa.func.count())
+                .select_from(reference)
+                .where(reference.c.org_id == DEMO_ORG_ID)
+            ),
+        )
+
+
+def test_the_product_migration_puts_every_existing_row_in_the_demo_org(
+    database, alembic_config
+):
+    command.upgrade(alembic_config, ORGS)
+    add_old_product_rows(database)
+
+    command.upgrade(alembic_config, REVISION)
+
+    for table in ORG_TABLES:
+        total, in_demo = rows_in_the_demo_org(database, table)
+        assert total > 0, f"{table} had no rows to migrate"
+        assert in_demo == total, (
+            f"{table}: {in_demo} of {total} rows are in the demo org"
+        )
+
+
+@pytest.mark.parametrize("table", ORG_TABLES)
+def test_after_the_product_migration_org_id_is_required_and_a_foreign_key(
+    database, alembic_config, table
+):
+    command.upgrade(alembic_config, REVISION)
+    inspector = inspect(database)
+
+    column = next(c for c in inspector.get_columns(table) if c["name"] == "org_id")
+    assert column["nullable"] is False
+    assert any(
+        fk["constrained_columns"] == ["org_id"]
+        and fk["referred_table"] == "organizations"
+        for fk in inspector.get_foreign_keys(table)
+    )
+
+
+@pytest.mark.parametrize(
+    ("table", "key"),
+    [
+        ("rules", ["org_id", "id", "version"]),
+        ("facts", ["org_id", "id", "version"]),
+        ("terms", ["org_id", "id"]),
+        ("assets", ["org_id", "id"]),
+    ],
+)
+def test_rules_facts_terms_and_assets_are_keyed_per_org(
+    database, alembic_config, table, key
+):
+    command.upgrade(alembic_config, REVISION)
+
+    assert inspect(database).get_pk_constraint(table)["constrained_columns"] == key
+
+
+def test_two_orgs_can_hold_the_same_rule_after_the_migration(database, alembic_config):
+    command.upgrade(alembic_config, REVISION)
+    other = "11111111-1111-4111-8111-111111111111".replace("-", "")
+    with database.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO organizations (id, name, slug, kind, created_at, status) "
+                f"VALUES ('{other}', 'Other', 'other', 'sandbox', {NOW}, 'active')"
+            )
+        )
+        for org in (DEMO_HEX, other):
+            connection.execute(
+                text(
+                    "INSERT INTO rules (org_id, id, version, type, text, clause_ref, severity, channel_scope, status) "
+                    f"VALUES ('{org}', 'R1', 1, 'judgment', 't', 'c1', 'low', '[]', 'approved')"
+                )
+            )
+
+    with database.connect() as connection:
+        assert connection.scalar(text("SELECT count(*) FROM rules")) == 2
+
+
+def test_the_product_migration_downgrades_and_keeps_the_rows(database, alembic_config):
+    command.upgrade(alembic_config, ORGS)
+    add_old_product_rows(database)
+    command.upgrade(alembic_config, REVISION)
+
+    command.downgrade(alembic_config, ORGS)
+
+    inspector = inspect(database)
+    for table in ORG_TABLES:
+        assert "org_id" not in {c["name"] for c in inspector.get_columns(table)}, table
+    assert inspector.get_pk_constraint("rules")["constrained_columns"] == [
+        "id",
+        "version",
+    ]
+    assert inspector.get_pk_constraint("terms")["constrained_columns"] == ["id"]
+    with database.connect() as connection:
+        assert connection.scalar(text("SELECT count(*) FROM rules")) == 2
+        assert connection.scalar(text("SELECT count(*) FROM content")) == 1
+
+
+def test_the_product_migration_can_run_again_after_a_downgrade(
+    database, alembic_config
+):
+    command.upgrade(alembic_config, REVISION)
+    command.downgrade(alembic_config, ORGS)
+    add_old_product_rows(database)
+
+    command.upgrade(alembic_config, REVISION)
+
+    assert rows_in_the_demo_org(database, "rules") == (2, 2)

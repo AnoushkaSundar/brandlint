@@ -56,7 +56,7 @@ def test_tables_hold_every_contract_field():
         "status",
         "supersedes",
         "required_text",
-    } == columns("rules")
+    } == columns("rules") - {"org_id"}
     assert {
         "id",
         "statement",
@@ -66,7 +66,7 @@ def test_tables_hold_every_contract_field():
         "valid_until",
         "data_class",
         "version",
-    } == columns("facts")
+    } == columns("facts") - {"org_id"}
     assert {
         "id",
         "preferred",
@@ -74,8 +74,8 @@ def test_tables_hold_every_contract_field():
         "renamed_from",
         "rule_id",
         "rule_version",
-    } == columns("terms")
-    assert {"id", "kind", "file_ref", "meta"} == columns("assets")
+    } == columns("terms") - {"org_id"}
+    assert {"id", "kind", "file_ref", "meta"} == columns("assets") - {"org_id"}
     assert {
         "id",
         "review_id",
@@ -87,10 +87,15 @@ def test_tables_hold_every_contract_field():
         "reason",
         "fix_text",
         "created_at",
-    } == columns("decisions")
-    assert {"id", "review_id", "check", "text", "explanation", "created_at"} == columns(
-        "gaps"
-    )
+    } == columns("decisions") - {"org_id"}
+    assert {
+        "id",
+        "review_id",
+        "check",
+        "text",
+        "explanation",
+        "created_at",
+    } == columns("gaps") - {"org_id"}
 
 
 def test_reviews_pin_the_rulebook_version():

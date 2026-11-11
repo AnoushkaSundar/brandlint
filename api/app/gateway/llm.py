@@ -25,6 +25,7 @@ from app.contracts import DataClass
 from app.gateway import masking, policy
 from app.gateway.models import GatewayLog
 from app.gateway.policy import PINNED_MODEL, POLICY_VERSION
+from app.tenancy import resolve_org
 
 __all__ = ["PINNED_MODEL", "POLICY_VERSION", "LeakBlocked", "PolicyBlocked", "call"]
 
@@ -129,6 +130,7 @@ def call(
                 # Without a review, tokens only need to last for this call.
                 scope=review_id or f"call-{uuid.uuid4()}",
                 bind=session.get_bind(),
+                org_id=resolve_org(session),
             )
         body = {
             "model": model,
@@ -141,7 +143,9 @@ def call(
         content = raw["choices"][0]["message"]["content"]
         if masked:
             problem = masking.leak(
-                content, masked.tokens, masking.deny_list(session.get_bind())
+                content,
+                masked.tokens,
+                masking.deny_list(session.get_bind(), resolve_org(session)),
             )
             if problem:
                 raise LeakBlocked(problem)

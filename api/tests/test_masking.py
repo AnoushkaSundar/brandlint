@@ -7,6 +7,7 @@ import threading
 import pytest
 from app.admin import models as admin_models
 from app.admin.seed import seed_brand
+from app.auth.orgs import DEMO_ORG_ID
 from app.contracts import Rule
 from app.db import Base
 from app.engine.agents import language
@@ -44,7 +45,7 @@ def session(engine):
 
 @pytest.fixture(autouse=True)
 def fixed_deny_list(monkeypatch):
-    monkeypatch.setattr(masking, "deny_list", lambda bind: DENY)
+    monkeypatch.setattr(masking, "deny_list", lambda bind, org_id=None: DENY)
 
 
 @pytest.fixture()
@@ -180,7 +181,7 @@ def test_presidio_outage_stops_the_call(session, sent, monkeypatch):
 
 
 def test_deny_list_failure_stops_the_call(session, sent, monkeypatch):
-    def broken(bind):
+    def broken(bind, org_id=None):
         raise OSError("no brand data")
 
     monkeypatch.setattr(masking, "deny_list", broken)
@@ -302,7 +303,7 @@ def test_language_agent_stays_valid_through_masking(session, monkeypatch):
 
 def test_the_deny_list_comes_from_protected_facts(engine, monkeypatch):
     monkeypatch.undo()
-    monkeypatch.setattr(masking, "_deny_cache", None)
+    monkeypatch.setattr(masking, "_deny_cache", {})
     Base.metadata.create_all(
         engine,
         tables=[
@@ -314,6 +315,6 @@ def test_the_deny_list_comes_from_protected_facts(engine, monkeypatch):
     )
     with Session(engine) as session:
         seed_brand(session)
-    deny = masking.deny_list(engine)
+    deny = masking.deny_list(engine, DEMO_ORG_ID)
     assert "Bluewren" in deny.terms
     assert "tarnhollow landing" in deny.allowed

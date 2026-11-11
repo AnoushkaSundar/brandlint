@@ -2,7 +2,6 @@ from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import (
@@ -26,6 +25,7 @@ from app.contracts import (
     FixSuggestion,
     Role,
 )
+from app.tenancy import scoped
 from app.workflow import fixes
 from app.workflow.comments import add_comment, list_comments
 from app.workflow.decisions import (
@@ -61,7 +61,7 @@ router = APIRouter(
 
 def _covers_latest(session: Session, content: Content, review: Review) -> bool:
     newest = session.scalar(
-        select(ContentVersion.id)
+        scoped(session, ContentVersion, ContentVersion.id)
         .where(ContentVersion.content_id == content.id)
         .order_by(ContentVersion.version.desc())
         .limit(1)
@@ -263,7 +263,7 @@ def get_decisions(session: SessionDep, since: datetime | None = None) -> list:
 )
 def get_queue(session: SessionDep) -> Queue:
     ready = session.scalars(
-        select(Content)
+        scoped(session, Content)
         .where(Content.state == ContentState.reviewer_check.value)
         .order_by(Content.created_at)
     )

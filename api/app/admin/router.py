@@ -20,6 +20,8 @@ from app.auth.models import User
 from app.content import rereview
 from app.contracts import Asset, AssetKind, Fact, Gap, Role, Rule, Term
 from app.memory import queries as memory
+from app.tenancy import scoped
+from app.workflow.models import Review
 
 router = APIRouter(
     prefix="/admin", tags=["admin"], dependencies=[Depends(current_user)]
@@ -57,6 +59,17 @@ def get_assets(session: SessionDep) -> list[Asset]:
 
 @router.post("/gaps", dependencies=[Depends(require_roles(Role.admin))])
 def post_gaps(gaps: list[Gap], session: SessionDep) -> dict[str, int]:
+    reviews = {gap.review_id for gap in gaps}
+    known = set(
+        session.scalars(
+            scoped(session, Review, Review.engine_review_id).where(
+                Review.engine_review_id.in_(reviews)
+            )
+        )
+    )
+    # Another org's review and a missing one get the same answer.
+    if reviews - known:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Review not found")
     saved = save_gaps(session, gaps)
     session.commit()
     return {"saved": saved}

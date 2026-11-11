@@ -26,7 +26,7 @@ def chunk(text, data_class="public", number=0):
 @pytest.fixture()
 def session(tmp_path, monkeypatch):
     monkeypatch.setattr(
-        masking, "deny_list", lambda bind: masking.DenyList(("Bluewren",), frozenset())
+        masking, "deny_list", lambda bind, org_id=None: masking.DenyList(("Bluewren",), frozenset())
     )
     engine = create_engine(f"sqlite:///{tmp_path}/test.db")
     Base.metadata.create_all(

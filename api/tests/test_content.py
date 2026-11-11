@@ -7,6 +7,7 @@ import app.content.models
 import app.workflow.models  # noqa: F401
 import pytest
 from app.auth.models import User
+from app.auth.orgs import DEMO_ORG_ID
 from app.auth.router import router as auth_router
 from app.auth.security import SESSION_COOKIE, create_token, hash_password
 from app.content import storage
@@ -210,9 +211,13 @@ def test_files_are_stored_under_a_generated_name(client_for, tmp_path):
     response = upload(client_for(), "../../evil.txt", b"Hello")
 
     assert response.status_code == 201
-    stored = [path.name for path in tmp_path.iterdir()]
+    stored = [
+        path.relative_to(tmp_path).as_posix()
+        for path in tmp_path.rglob("*")
+        if path.is_file()
+    ]
     version_id = response.json()["versions"][0]["id"]
-    assert stored == [f"{version_id}.txt"]
+    assert stored == [f"{DEMO_ORG_ID}/{version_id}.txt"]
 
 
 @pytest.mark.parametrize("role", [Role.reviewer, Role.manager, Role.legal, Role.admin])
@@ -444,7 +449,9 @@ def test_a_blank_file_field_from_a_browser_is_ignored(client_for):
 def captured_source(monkeypatch):
     calls = []
 
-    def fake_start_review(content_version_id, channel, rulebook_version, source):
+    def fake_start_review(
+        content_version_id, channel, rulebook_version, source, **kwargs
+    ):
         calls.append(source)
         return "rev-captured"
 

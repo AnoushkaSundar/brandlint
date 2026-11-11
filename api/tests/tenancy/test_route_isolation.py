@@ -11,6 +11,7 @@ from __future__ import annotations
 import pytest
 
 from tests.tenancy.checks import isolation_problems
+from tests.tenancy.inventory import LANDED_BLOCKS
 from tests.tenancy.routes import Route, real_routes
 
 _, ROUTES = real_routes()
@@ -23,11 +24,32 @@ ALREADY_ISOLATED = {
         "don't own. Everyone else is refused by role."
     ),
     "POST /content/{content_id}/versions": "The same: creators get a 404, others a role refusal.",
+    "POST /engine/eval/gate": (
+        "It reads the rule from the caller's own rulebook, which Block 3 made per org, so "
+        "another org's rule is a 404 like a missing one."
+    ),
+}
+
+
+# Routes of an earlier block that call into a later block's code, so they pass when that
+# block lands, not before.
+DEPENDS_ON_LATER_BLOCK = {
+    "POST /admin/facts/{fact_id}/rereview": (
+        4,
+        "It asks /memory/impact which pieces cite the fact, and that is Block 4's graph.",
+    ),
 }
 
 
 def _expected_to_fail(route: Route):
-    if route.block in (3, 4) and route.name not in ALREADY_ISOLATED:
+    if route.name in DEPENDS_ON_LATER_BLOCK:
+        block, reason = DEPENDS_ON_LATER_BLOCK[route.name]
+        return (
+            []
+            if block in LANDED_BLOCKS
+            else [pytest.mark.xfail(strict=True, reason=f"Block {block}: {reason}")]
+        )
+    if route.block in (3, 4) and route.block not in LANDED_BLOCKS and route.name not in ALREADY_ISOLATED:
         return [
             pytest.mark.xfail(
                 strict=True,

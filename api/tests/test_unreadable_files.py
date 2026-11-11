@@ -44,7 +44,7 @@ def started(monkeypatch):
     monkeypatch.setenv("USE_MOCK_ENGINE", "false")
     calls = []
     monkeypatch.setattr(
-        reviews, "start_review", lambda *args: calls.append(args) or "rev-1"
+        reviews, "start_review", lambda *args, **kwargs: calls.append(args) or "rev-1"
     )
     return calls
 

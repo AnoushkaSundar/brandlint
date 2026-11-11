@@ -11,9 +11,11 @@ See "Querying tenant data" in CLAUDE.md.
 from app.tenancy import autofill as autofill
 from app.tenancy.errors import NoOrg, NotTenantModel, OrgMismatch, TenancyError
 from app.tenancy.scoped import (
+    ScopedSelect,
     bind_org,
     bound_org,
     org_criterion,
+    org_sessions,
     resolve_org,
     scoped,
     scoped_delete,
@@ -26,10 +28,12 @@ __all__ = [
     "NoOrg",
     "NotTenantModel",
     "OrgMismatch",
+    "ScopedSelect",
     "TenancyError",
     "bind_org",
     "bound_org",
     "org_criterion",
+    "org_sessions",
     "resolve_org",
     "scoped",
     "scoped_delete",

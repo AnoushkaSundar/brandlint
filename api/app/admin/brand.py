@@ -2,13 +2,13 @@
 
 from collections.abc import Iterable
 
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.admin.models import Asset as AssetRow
 from app.admin.models import Fact as FactRow
 from app.admin.models import Term as TermRow
 from app.contracts import Asset, DataClass, Fact, Role, Term
+from app.tenancy import scoped
 
 PROTECTED_CLASSES = {DataClass.confidential, DataClass.restricted}
 PROTECTED_FACT_READERS = {Role.admin.value, Role.legal.value}
@@ -19,7 +19,7 @@ def list_facts(session: Session) -> list[Fact]:
 
     The engine needs all of them. Anything shown to a person goes through visible_facts.
     """
-    rows = session.scalars(select(FactRow).order_by(FactRow.id, FactRow.version))
+    rows = session.scalars(scoped(session, FactRow).order_by(FactRow.id, FactRow.version))
     newest = {row.id: row for row in rows}
     return [Fact.model_validate(row, from_attributes=True) for row in newest.values()]
 
@@ -32,10 +32,10 @@ def visible_facts(facts: Iterable[Fact], role: str) -> list[Fact]:
 
 
 def list_terms(session: Session) -> list[Term]:
-    rows = session.scalars(select(TermRow).order_by(TermRow.id))
+    rows = session.scalars(scoped(session, TermRow).order_by(TermRow.id))
     return [Term.model_validate(row, from_attributes=True) for row in rows]
 
 
 def list_assets(session: Session) -> list[Asset]:
-    rows = session.scalars(select(AssetRow).order_by(AssetRow.id))
+    rows = session.scalars(scoped(session, AssetRow).order_by(AssetRow.id))
     return [Asset.model_validate(row, from_attributes=True) for row in rows]

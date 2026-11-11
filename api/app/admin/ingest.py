@@ -11,7 +11,7 @@ from pathlib import Path
 
 from fastapi import HTTPException, status
 from pydantic import BaseModel, Field, ValidationError
-from sqlalchemy import func, select
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.admin.brand import list_terms
@@ -22,6 +22,7 @@ from app.checks.visual.checks import LOGO_RULE, PALETTE_RULE
 from app.clients.gateway import llm_call
 from app.contracts import Rule, RuleStatus, RuleType, Severity
 from app.engine.parsers import parse
+from app.tenancy import scoped
 from app.workflow.models import AuditLog
 
 DOCUMENT_TYPES = {".pdf", ".docx", ".txt", ".md"}
@@ -77,7 +78,7 @@ class DraftEdit(BaseModel):
 
 def next_version(session: Session) -> int:
     newest = session.scalar(
-        select(func.max(RuleRow.version)).where(
+        scoped(session, RuleRow, func.max(RuleRow.version)).where(
             RuleRow.status == RuleStatus.approved.value
         )
     )
@@ -135,7 +136,7 @@ def _payload(text: str, prompt: str = _PROMPT, kind: str = "guideline") -> dict:
 
 
 def _latest_by_clause(session: Session) -> dict[str, RuleRow]:
-    rows = session.scalars(select(RuleRow).order_by(RuleRow.id, RuleRow.version)).all()
+    rows = session.scalars(scoped(session, RuleRow).order_by(RuleRow.id, RuleRow.version)).all()
     return {row.clause_ref: row for row in rows}
 
 
@@ -277,7 +278,7 @@ def _check_conflicts(
 
 
 def _fresh_id(session: Session, suggested: str | None, taken: set[str]) -> str:
-    used = set(session.scalars(select(RuleRow.id))) | taken
+    used = set(session.scalars(scoped(session, RuleRow, RuleRow.id))) | taken
     if suggested and suggested not in used:
         return suggested
     number = 1
@@ -399,7 +400,7 @@ def _as_rule(row: RuleRow) -> Rule:
 
 def drafts(session: Session) -> list[Rule]:
     rows = session.scalars(
-        select(RuleRow)
+        scoped(session, RuleRow)
         .where(RuleRow.status == RuleStatus.draft.value)
         .order_by(RuleRow.id)
     )
@@ -408,7 +409,7 @@ def drafts(session: Session) -> list[Rule]:
 
 def latest_conflicts(session: Session) -> list[list[str]]:
     job = session.scalar(
-        select(IngestJob)
+        scoped(session, IngestJob)
         .where(IngestJob.status == "done")
         .order_by(IngestJob.created_at.desc())
         .limit(1)
@@ -418,7 +419,7 @@ def latest_conflicts(session: Session) -> list[list[str]]:
 
 def _draft_row(session: Session, rule_id: str) -> RuleRow:
     row = session.scalar(
-        select(RuleRow).where(
+        scoped(session, RuleRow).where(
             RuleRow.id == rule_id, RuleRow.status == RuleStatus.draft.value
         )
     )
@@ -454,7 +455,7 @@ def reject_draft(session: Session, rule_id: str, actor: User) -> None:
 
 def _in_force(session: Session) -> set[str]:
     rows = session.scalars(
-        select(RuleRow)
+        scoped(session, RuleRow)
         .where(RuleRow.status != RuleStatus.draft.value)
         .order_by(RuleRow.version)
     ).all()
@@ -530,13 +531,13 @@ def draft_from_proposal(
     if rule_id not in _in_force(session):
         return None
     current = session.scalar(
-        select(RuleRow)
+        scoped(session, RuleRow)
         .where(RuleRow.id == rule_id, RuleRow.status == RuleStatus.approved.value)
         .order_by(RuleRow.version.desc())
         .limit(1)
     )
     existing = session.scalar(
-        select(RuleRow).where(
+        scoped(session, RuleRow).where(
             RuleRow.id == rule_id, RuleRow.status == RuleStatus.draft.value
         )
     )

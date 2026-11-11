@@ -1,11 +1,12 @@
 """The record of a piece of content, and the audit log."""
 
-from sqlalchemy import func, select
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.auth.models import User
 from app.content.models import Content, ContentVersion
 from app.contracts import ContentState
+from app.tenancy import scoped
 from app.workflow.models import AuditLog, Decision, Review, ReviewStateLog
 from app.workflow.schemas import (
     AuditEntry,
@@ -30,13 +31,13 @@ def _stamp(
     if not published:
         return None
     version = session.scalar(
-        select(func.max(ContentVersion.version)).where(
+        scoped(session, ContentVersion, func.max(ContentVersion.version)).where(
             ContentVersion.content_id == content.id
         )
     )
     rulebook = session.scalar(
-        select(Review.rulebook_version)
-        .join(ContentVersion, Review.content_version_id == ContentVersion.id)
+        scoped(session, Review, Review.rulebook_version)
+        .scoped_join(session, ContentVersion, Review.content_version_id == ContentVersion.id)
         .where(ContentVersion.content_id == content.id)
         .order_by(Review.created_at.desc())
         .limit(1)
@@ -57,22 +58,22 @@ def _stamp(
 def content_history(session: Session, content: Content) -> History:
     entries = list(
         session.scalars(
-            select(ReviewStateLog)
+            scoped(session, ReviewStateLog)
             .where(ReviewStateLog.content_id == content.id)
             .order_by(ReviewStateLog.created_at)
         )
     )
     decisions = session.execute(
-        select(Decision, ContentVersion.version)
-        .join(Review, Decision.review_id == Review.id)
-        .join(ContentVersion, Review.content_version_id == ContentVersion.id)
+        scoped(session, Decision, Decision, ContentVersion.version)
+        .scoped_join(session, Review, Decision.review_id == Review.id)
+        .scoped_join(session, ContentVersion, Review.content_version_id == ContentVersion.id)
         .where(ContentVersion.content_id == content.id)
         .order_by(Decision.created_at)
     ).all()
 
     ids = {entry.actor_id for entry in entries}
     ids |= {decision.actor_id for decision, _ in decisions}
-    users = session.scalars(select(User).where(User.id.in_(ids))) if ids else []
+    users = session.scalars(scoped(session, User).where(User.id.in_(ids))) if ids else []
     names = {user.id: user.name for user in users}
 
     return History(
@@ -119,10 +120,10 @@ def audit_page(
     if role:
         filters.append(AuditLog.role == role)
 
-    total = session.scalar(select(func.count()).select_from(AuditLog).where(*filters))
+    total = session.scalar(scoped(session, AuditLog, func.count()).where(*filters))
     rows = session.execute(
-        select(AuditLog, User.name)
-        .join(User, AuditLog.actor_id == User.id, isouter=True)
+        scoped(session, AuditLog, AuditLog, User.name)
+        .scoped_join(session, User, AuditLog.actor_id == User.id, outer=True)
         .where(*filters)
         # The id breaks ties, so a row can't appear on two pages or on neither.
         .order_by(AuditLog.created_at.desc(), AuditLog.id)

@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 @pytest.fixture(autouse=True)
 def empty_deny_list(monkeypatch):
     # These tests cover routing and logging. test_masking.py covers masking.
-    monkeypatch.setattr(masking, "deny_list", lambda bind: masking.DenyList((), frozenset()))
+    monkeypatch.setattr(masking, "deny_list", lambda bind, org_id=None: masking.DenyList((), frozenset()))
 
 
 @pytest.fixture()
@@ -133,7 +133,7 @@ def test_a_review_of_restricted_data_uses_a_different_cache_key():
 
 def mask_codename(monkeypatch, reply):
     monkeypatch.setattr(
-        masking, "deny_list", lambda bind: masking.DenyList(("Bluewren",), frozenset())
+        masking, "deny_list", lambda bind, org_id=None: masking.DenyList(("Bluewren",), frozenset())
     )
     monkeypatch.setattr(
         masking, "_token_for", lambda value, label, scope, bind: "[PRODUCT_1]"

@@ -114,34 +114,26 @@ def test_every_documented_route_exists():
     )
 
 
-def test_the_isolation_check_passes_once_a_route_is_scoped(
+def test_the_isolation_check_notices_when_a_route_stops_scoping_by_org(
     world, database, client_for, model_calls, monkeypatch
 ):
-    """The check can be satisfied: scope one route by org and its problems disappear.
+    """The check can be satisfied, and it can fail.
 
-    Org membership is stood in for by the tag inside the fixture's ids (u-A-admin and
-    c-A-1 are org A's). Without the change the same route is full of problems, which
-    test_org_b_learns_nothing_about_org_a shows. Real scoping replaces this in Block 3.
+    GET /content/{id} is scoped, so it passes. Making it look content up by id alone, as it
+    did before Block 3, brings the leak back and the check reports it.
     """
-    import app.content.router as content_router
-    from fastapi import HTTPException
+    from app.content import access
 
     from tests.tenancy.checks import isolation_problems
 
     route = Route("GET", "/content/{content_id}")
-    unscoped, _ = isolation_problems(route, world, database, client_for, model_calls)
-    assert unscoped, "the unscoped route should leak, or this proves nothing"
-
-    original = content_router.readable_content
-
-    def scoped(content_id, user, session):
-        content = original(content_id, user, session)
-        if content.creator_id.split("-")[1] != user.id.split("-")[1]:
-            raise HTTPException(404, "Content not found")
-        return content
-
-    monkeypatch.setattr(content_router, "readable_content", scoped)
-    scoped_problems, _ = isolation_problems(
-        route, world, database, client_for, model_calls
-    )
+    scoped_problems, _ = isolation_problems(route, world, database, client_for, model_calls)
     assert scoped_problems == []
+
+    monkeypatch.setattr(
+        access, "scoped_get", lambda session, model, ident, **kwargs: session.get(model, ident)
+    )
+    leaking, _ = isolation_problems(route, world, database, client_for, model_calls)
+
+    assert leaking
+    assert any("contains org A's data" in problem for problem in leaking)

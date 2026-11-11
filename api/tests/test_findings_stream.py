@@ -437,7 +437,7 @@ def test_client_hands_content_to_the_engine(monkeypatch):
     monkeypatch.setenv("USE_MOCK_ENGINE", "false")
     calls = []
 
-    def fake_start(*args):
+    def fake_start(*args, **kwargs):
         calls.append(args)
         return "rev-1"
 
