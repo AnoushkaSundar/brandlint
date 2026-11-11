@@ -20,12 +20,14 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from app.auth.orgs import DEMO_ORG_ID
 from app.contracts import ContentSource, DataClass, Proposal, Rule, Verdict
 from app.engine.agents import language
 from app.engine.agents.language import ClassifyFn
 from app.engine.checks import CheckContext
 from app.engine.chunking import ParsedChunk, sha256_text
 from app.governance.models import EvalRun
+from app.tenancy import resolve_org
 
 logger = logging.getLogger(__name__)
 
@@ -106,7 +108,10 @@ def gate(
     model: str,
 ) -> dict[str, Any]:
     """Refuses a proposal it can't measure, so a gap in the set isn't a pass."""
-    examples = load_examples(rule.id)
+    # The labelled examples were written for the Tarnhollow guideline. Another org's
+    # rules have none, so its proposals can't pass and an admin decides by hand.
+    own = str(resolve_org(session)).lower() == DEMO_ORG_ID
+    examples = load_examples(rule.id) if own else []
     if len(examples) < MIN_EXAMPLES:
         result = {"passed": False, "precision": 0.0, "recall": 0.0}
         details: dict[str, Any] = {"reason": "not enough labelled examples"}

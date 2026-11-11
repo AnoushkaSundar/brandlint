@@ -17,7 +17,7 @@ from app.db import get_sessionmaker
 from app.engine import evaluation, graph
 from app.governance import agent, spot_checks
 from app.governance.models import Proposal as ProposalRow
-from app.tenancy import bound_org, org_sessions
+from app.tenancy import bound_org, org_sessions, scoped_get
 
 
 class ProposalDecision(BaseModel):
@@ -76,7 +76,7 @@ def _routes() -> APIRouter:
 
         An approved rewrite becomes a draft, which an admin approves in the rulebook.
         """
-        row = session.get(ProposalRow, proposal_id)
+        row = scoped_get(session, ProposalRow, proposal_id)
         if row is None or row.status != ProposalStatus.pending.value:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "No such pending proposal")
         row.status = body.status

@@ -21,7 +21,8 @@ API_DIR = Path(__file__).resolve().parents[1]
 # The head before the organisations migration, and the revision under test.
 PREVIOUS = "alapan_0004_finding_manifest"
 ORGS = "anoushka_0006"
-REVISION = "anoushka_0007"
+PRODUCT = "anoushka_0007"
+REVISION = "alapan_0005"
 
 
 @pytest.fixture
@@ -227,7 +228,7 @@ def test_the_product_migration_puts_every_existing_row_in_the_demo_org(
     command.upgrade(alembic_config, ORGS)
     add_old_product_rows(database)
 
-    command.upgrade(alembic_config, REVISION)
+    command.upgrade(alembic_config, PRODUCT)
 
     for table in ORG_TABLES:
         total, in_demo = rows_in_the_demo_org(database, table)
@@ -241,7 +242,7 @@ def test_the_product_migration_puts_every_existing_row_in_the_demo_org(
 def test_after_the_product_migration_org_id_is_required_and_a_foreign_key(
     database, alembic_config, table
 ):
-    command.upgrade(alembic_config, REVISION)
+    command.upgrade(alembic_config, PRODUCT)
     inspector = inspect(database)
 
     column = next(c for c in inspector.get_columns(table) if c["name"] == "org_id")
@@ -265,13 +266,13 @@ def test_after_the_product_migration_org_id_is_required_and_a_foreign_key(
 def test_rules_facts_terms_and_assets_are_keyed_per_org(
     database, alembic_config, table, key
 ):
-    command.upgrade(alembic_config, REVISION)
+    command.upgrade(alembic_config, PRODUCT)
 
     assert inspect(database).get_pk_constraint(table)["constrained_columns"] == key
 
 
 def test_two_orgs_can_hold_the_same_rule_after_the_migration(database, alembic_config):
-    command.upgrade(alembic_config, REVISION)
+    command.upgrade(alembic_config, PRODUCT)
     other = "11111111-1111-4111-8111-111111111111".replace("-", "")
     with database.begin() as connection:
         connection.execute(
@@ -295,7 +296,7 @@ def test_two_orgs_can_hold_the_same_rule_after_the_migration(database, alembic_c
 def test_the_product_migration_downgrades_and_keeps_the_rows(database, alembic_config):
     command.upgrade(alembic_config, ORGS)
     add_old_product_rows(database)
-    command.upgrade(alembic_config, REVISION)
+    command.upgrade(alembic_config, PRODUCT)
 
     command.downgrade(alembic_config, ORGS)
 
@@ -315,10 +316,129 @@ def test_the_product_migration_downgrades_and_keeps_the_rows(database, alembic_c
 def test_the_product_migration_can_run_again_after_a_downgrade(
     database, alembic_config
 ):
-    command.upgrade(alembic_config, REVISION)
+    command.upgrade(alembic_config, PRODUCT)
     command.downgrade(alembic_config, ORGS)
     add_old_product_rows(database)
 
-    command.upgrade(alembic_config, REVISION)
+    command.upgrade(alembic_config, PRODUCT)
 
     assert rows_in_the_demo_org(database, "rules") == (2, 2)
+
+
+# Block 4: the engine, memory, gateway and governance tables
+
+AFTER_PRODUCT = PRODUCT
+AI_TABLES = [
+    "chunks",
+    "claim_units",
+    "findings",
+    "review_cache",
+    "edges",
+    "gateway_log",
+    "token_vault",
+    "proposals",
+    "spot_checks",
+    "eval_runs",
+]
+AI_ROWS = [
+    "INSERT INTO chunks (id, content_version_id, ordinal, kind, text, content_hash, data_class, style) VALUES ('ch1', 'v1', 0, 'paragraph', 't', 'h', 'public', NULL)",
+    f"INSERT INTO claim_units (id, review_id, content_version_id, normalized_claim, span_refs, depends_on, created_at) VALUES ('cu1', 'e1', 'v1', 'c', '[]', '[]', {NOW})",
+    f"INSERT INTO findings (id, review_id, content_version_id, unit_type, spans, \"check\", tier, verdict, severity, confidence, rule_id, rule_version, fact_ids, cited_text, explanation, trace, ai_generated, models_used, vote, fix_available, status, manifest, created_at) VALUES ('f1', 'e1', 'v1', 'chunk', '[]', 'tone', 1, 'UNSURE', 'low', 0.5, 'R1', 1, '[]', 'c', 'e', '{{}}', 0, '[]', NULL, 0, 'open', NULL, {NOW})",
+    f"INSERT INTO review_cache (id, cache_key, unit_type, verdict, payload, depends_on, valid_until, manifest, created_at) VALUES ('rc1', 'key1', 'chunk', 'PASS', '{{}}', '[]', NULL, '{{}}', {NOW})",
+    f"INSERT INTO edges (id, type, src_type, src_id, dst_type, dst_id, meta, created_at) VALUES ('ed1', 'CITES', 'Claim', 'cu1', 'Fact', 'F-001', '{{}}', {NOW})",
+    f"INSERT INTO gateway_log (id, created_at, purpose, data_class, rule_ids, provider, model, route, masked, review_id, status, latency_ms, error) VALUES ('gl1', {NOW}, 'classify', 'public', '[]', NULL, 'm', 'litellm', NULL, 'e1', 'ok', 5, NULL)",
+    f"INSERT INTO token_vault (id, scope, token, value, entity, created_at) VALUES ('tv1', 'e1', '[PRODUCT_1]', 'Bluewren', 'PRODUCT', {NOW})",
+    f"INSERT INTO proposals (id, rule_id, kind, current, suggested, evidence, eval, status, created_at) VALUES ('p1', 'R1', 'amendment', 'a', 'b', '{{}}', NULL, 'pending', {NOW})",
+    f"INSERT INTO spot_checks (id, content_id, review_id, sampled_at, reviewer_id, result) VALUES ('sc1', 'c1', 'e1', {NOW}, NULL, NULL)",
+    f"INSERT INTO eval_runs (id, kind, precision, recall, false_flag_rate, attack_success_rate, passed, details, created_at) VALUES ('ev1', 'gate', 1.0, 1.0, 0.0, 0.0, 1, '{{}}', {NOW})",
+]
+
+
+def add_old_ai_rows(database):
+    with database.begin() as connection:
+        for statement in AI_ROWS:
+            connection.execute(text(statement))
+
+
+def test_the_ai_migration_puts_every_existing_row_in_the_demo_org(
+    database, alembic_config
+):
+    command.upgrade(alembic_config, AFTER_PRODUCT)
+    add_old_ai_rows(database)
+
+    command.upgrade(alembic_config, REVISION)
+
+    for table in AI_TABLES:
+        total, in_demo = rows_in_the_demo_org(database, table)
+        assert total > 0, f"{table} had no rows to migrate"
+        assert in_demo == total, f"{table}: {in_demo} of {total} rows are in the demo org"
+
+
+@pytest.mark.parametrize("table", AI_TABLES)
+def test_after_the_ai_migration_org_id_is_required_and_a_foreign_key(
+    database, alembic_config, table
+):
+    command.upgrade(alembic_config, REVISION)
+    inspector = inspect(database)
+
+    column = next(c for c in inspector.get_columns(table) if c["name"] == "org_id")
+    assert column["nullable"] is False
+    assert any(
+        fk["constrained_columns"] == ["org_id"]
+        and fk["referred_table"] == "organizations"
+        for fk in inspector.get_foreign_keys(table)
+    )
+
+
+def test_edges_are_keyed_per_org(database, alembic_config):
+    command.upgrade(alembic_config, REVISION)
+
+    assert inspect(database).get_pk_constraint("edges")["constrained_columns"] == [
+        "org_id",
+        "id",
+    ]
+
+
+def test_the_ai_migration_matches_the_models(database, alembic_config):
+    command.upgrade(alembic_config, REVISION)
+    tables = {
+        name: table
+        for name, table in Base.metadata.tables.items()
+        if name in AI_TABLES
+    }
+
+    def only_ai_tables(obj, name, kind, reflected, compare_to):
+        return kind != "table" or name in tables
+
+    with database.connect() as connection:
+        context = MigrationContext.configure(
+            connection,
+            opts={"compare_type": True, "include_object": only_ai_tables},
+        )
+        assert compare_metadata(context, Base.metadata) == []
+
+
+def test_the_ai_migration_downgrades_and_keeps_the_rows(database, alembic_config):
+    command.upgrade(alembic_config, AFTER_PRODUCT)
+    add_old_ai_rows(database)
+    command.upgrade(alembic_config, REVISION)
+
+    command.downgrade(alembic_config, AFTER_PRODUCT)
+
+    inspector = inspect(database)
+    for table in AI_TABLES:
+        assert "org_id" not in {c["name"] for c in inspector.get_columns(table)}, table
+    assert inspector.get_pk_constraint("edges")["constrained_columns"] == ["id"]
+    with database.connect() as connection:
+        assert connection.scalar(text("SELECT count(*) FROM findings")) == 1
+        assert connection.scalar(text("SELECT count(*) FROM edges")) == 1
+
+
+def test_the_ai_migration_can_run_again_after_a_downgrade(database, alembic_config):
+    command.upgrade(alembic_config, REVISION)
+    command.downgrade(alembic_config, AFTER_PRODUCT)
+    add_old_ai_rows(database)
+
+    command.upgrade(alembic_config, REVISION)
+
+    assert rows_in_the_demo_org(database, "findings") == (1, 1)

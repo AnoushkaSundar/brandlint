@@ -10,7 +10,6 @@ from __future__ import annotations
 from collections import Counter
 from typing import Any
 
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.contracts import DataClass
@@ -18,7 +17,7 @@ from app.engine import reviews
 from app.engine.models import Finding
 from app.gateway import masking, policy
 from app.gateway.models import GatewayLog, TokenVault
-from app.tenancy import resolve_org
+from app.tenancy import resolve_org, scoped
 
 
 def _masked_chunks(review_id: str, session: Session) -> list[tuple[str, str]]:
@@ -52,7 +51,7 @@ def masking_preview(review_id: str, session: Session) -> dict[str, str]:
 def disclosure(review_id: str, session: Session) -> dict[str, Any]:
     _masked_chunks(review_id, session)
     calls = session.execute(
-        select(GatewayLog.model, GatewayLog.status).where(
+        scoped(session, GatewayLog, GatewayLog.model, GatewayLog.status).where(
             GatewayLog.review_id == review_id
         )
     ).all()
@@ -61,12 +60,12 @@ def disclosure(review_id: str, session: Session) -> dict[str, Any]:
     # logged calls at all answered from the cache on an earlier run, so it counts.
     only_failed = {model for model, _ in calls} - answered
     verdicts = session.scalars(
-        select(Finding.models_used).where(Finding.review_id == review_id)
+        scoped(session, Finding, Finding.models_used).where(Finding.review_id == review_id)
     ).all()
     named = {model for used in verdicts for model in used or []}
     models = sorted(answered | (named - only_failed))
     entities = session.scalars(
-        select(TokenVault.entity).where(TokenVault.scope == review_id)
+        scoped(session, TokenVault, TokenVault.entity).where(TokenVault.scope == review_id)
     ).all()
     return {
         "models": models,

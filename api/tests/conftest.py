@@ -36,6 +36,7 @@ LEGACY_FILES = frozenset(
         "test_workflow.py",
         # Engine and gateway tests that open their own sessions. Block 4 gives them an org.
         "test_cache_replay.py",
+        "test_fixer.py",
         "test_disclosure.py",
         "test_findings_stream.py",
         "test_gateway.py",
