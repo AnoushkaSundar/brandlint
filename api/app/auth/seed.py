@@ -31,6 +31,7 @@ SEED_USERS = [
 def seed_users(session: Session, password: str = DEFAULT_PASSWORD) -> int:
     """Adds any missing demo users to the demo org and returns how many were created."""
     org = ensure_demo_org(session)
+    # unscoped-ok: emails are unique across every org
     existing = set(session.scalars(select(User.email)))
     missing = [row for row in SEED_USERS if row[0] not in existing]
     password_hash = hash_password(password)

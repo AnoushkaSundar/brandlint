@@ -32,6 +32,24 @@ BrandLint is a pre-publication brand-governance platform. It turns an organisati
   - UNSURE findings block approval until a reviewer resolves them.
 - **Pin the rulebook version per review.** The fixer gets at most 2 attempts.
 
+## Querying tenant data
+
+Each organisation is an isolated workspace (see `docs/multitenancy.md`). A table that belongs to one org has an `org_id`, and it is queried **only** through `app.tenancy`, never with a hand-written `.where(org_id == ...)` or a plain `session.get`:
+
+| Instead of | Use |
+|---|---|
+| `select(Model)` | `scoped(session, Model)`, then `.where(...)` as usual. Pass columns to select those: `scoped(session, Model, Model.id)` |
+| `session.get(Model, id)` | `scoped_get(session, Model, id)`. Another org's row and a missing row both give `None`, so an id can't be used to find out whether it exists. A plain `get` ignores the org. |
+| `.join(Other, on)` | `scoped_join(statement, session, Other, on)` |
+| `update(Model)` / `delete(Model)` | `scoped_update(session, Model)` / `scoped_delete(session, Model)` |
+
+- **The org comes only from the signed-in user.** Take `CurrentOrg` (`from app.tenancy.context import CurrentOrg`) in a route. It ties the session to the user's org, so the helpers need no `org_id`. A background job passes `org_id=` itself. Never read an org from a body, path, query, header or the token.
+- **Safe by default.** The helpers raise `NotTenantModel` for a model without `org_id`, `NoOrg` when there is no org, and `OrgMismatch` when a query or a new row names a different org from the request's. A row added in a request is put in the caller's org.
+- **The CI check** (`api/tests/tenancy/test_unscoped_queries.py`) fails when a file gains a tenant query that doesn't use a helper. Queries that predate the helpers are counted per file in `api/tests/tenancy/unscoped_baseline.json`. Blocks 3 and 4 convert them, and after converting, run `python -m tests.tenancy.queries --update` from `api/` to lower the baseline. `python -m tests.tenancy.queries` lists every query it found.
+- **A query that is right without a scope** (looking a user up by email to find their org) carries `# unscoped-ok: <reason>` on its line or alone on the line above.
+- **A blind spot:** the check reads names, so it can't see a model passed around as a variable. Convert those by hand.
+- `organizations` is the only shared table. It is queried directly.
+
 ## Stack
 
 - **Web:** Next.js (App Router, TypeScript), Tailwind CSS, shadcn/ui.
