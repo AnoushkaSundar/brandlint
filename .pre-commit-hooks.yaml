@@ -1,0 +1,11 @@
+# Pre-commit hook: reviews staged copy files with BrandLint before they're committed.
+# Set BRANDLINT_URL, BRANDLINT_EMAIL and BRANDLINT_PASSWORD in your environment.
+# See docs/ci.md.
+- id: brandlint
+  name: BrandLint copy review
+  description: Reviews copy files against your approved brand rulebook.
+  entry: scripts/brandlint_ci.py
+  language: script
+  files: '\.(md|txt|html?|docx)$'
+  pass_filenames: true
+  require_serial: true

@@ -1,0 +1,68 @@
+name: BrandLint
+description: >
+  Reviews the copy files a pull request changes against your approved brand rulebook,
+  and fails the check when a finding blocks. It never approves anything: a person
+  decides in BrandLint, using the link in the output.
+
+inputs:
+  url:
+    description: The BrandLint site, such as https://brandlint.example.com
+    required: true
+  email:
+    description: The sign-in for a creator account that CI uses
+    required: true
+  password:
+    description: Its password. Pass it from a secret.
+    required: true
+  paths:
+    description: Space-separated globs of files to check
+    default: "**/*.md **/*.txt **/*.html **/*.htm **/*.docx"
+  exclude:
+    description: Space-separated globs to skip, such as "CHANGELOG.md docs/api/**"
+    default: ""
+  fail-on:
+    description: Block on violations at or above this severity (low, medium, high, critical)
+    default: low
+  unsure:
+    description: What a finding the AI wasn't sure about does (fail or warn)
+    default: fail
+  channel:
+    description: Which channel's rules apply (blog, linkedin, email, ad, banner, document)
+    default: document
+  data-class:
+    description: How sensitive the copy is (public, internal, confidential, restricted)
+    default: internal
+  max-files:
+    description: The most files to check in one run. More than this fails, never skips.
+    default: "10"
+
+runs:
+  using: composite
+  steps:
+    - name: Review changed copy
+      shell: bash
+      env:
+        BRANDLINT_URL: ${{ inputs.url }}
+        BRANDLINT_EMAIL: ${{ inputs.email }}
+        BRANDLINT_PASSWORD: ${{ inputs.password }}
+        BASE_REF: ${{ github.base_ref }}
+        PATHS: ${{ inputs.paths }}
+        EXCLUDE: ${{ inputs.exclude }}
+        FAIL_ON: ${{ inputs.fail-on }}
+        UNSURE: ${{ inputs.unsure }}
+        CHANNEL: ${{ inputs.channel }}
+        DATA_CLASS: ${{ inputs.data-class }}
+        MAX_FILES: ${{ inputs.max-files }}
+      run: |
+        if [ -z "$BASE_REF" ]; then
+          echo "::notice::BrandLint checks pull requests, so there is nothing to do on this event."
+          exit 0
+        fi
+        # The caller's checkout needs fetch-depth: 0, so the base branch can be compared.
+        git fetch --no-tags --quiet origin "$BASE_REF"
+        args=(--changed-since "origin/$BASE_REF" --github
+              --fail-on "$FAIL_ON" --unsure "$UNSURE" --channel "$CHANNEL"
+              --data-class "$DATA_CLASS" --max-files "$MAX_FILES")
+        for pattern in $PATHS; do args+=(--include "$pattern"); done
+        for pattern in $EXCLUDE; do args+=(--exclude "$pattern"); done
+        python3 "${{ github.action_path }}/../../../scripts/brandlint_ci.py" "${args[@]}"
