@@ -136,7 +136,7 @@ def mask_codename(monkeypatch, reply):
         masking, "deny_list", lambda bind, org_id=None: masking.DenyList(("Bluewren",), frozenset())
     )
     monkeypatch.setattr(
-        masking, "_token_for", lambda value, label, scope, bind: "[PRODUCT_1]"
+        masking, "_token_for", lambda value, label, scope, bind, org_id: "[PRODUCT_1]"
     )
     monkeypatch.setattr(
         llm,

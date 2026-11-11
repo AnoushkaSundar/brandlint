@@ -15,7 +15,7 @@ from app.clients import engine as engine_client
 from app.content.access import latest_review
 from app.content.models import Content
 from app.contracts import FindingStatus, Verdict
-from app.tenancy import scoped
+from app.tenancy import bound_org, scoped
 from app.workflow.decisions import finding_progress
 from app.workflow.models import Decision
 
@@ -62,7 +62,7 @@ def _tally(session: Session, pieces: list[Content]) -> tuple[_Tally, dict[str, s
             continue
         creator_of[review.id] = content.creator_id
         try:
-            findings = engine_client.list_findings(review.engine_review_id)
+            findings = engine_client.list_findings(review.engine_review_id, org_id=bound_org(session))
         except Exception:  # noqa: BLE001 - one piece mustn't hide the rest
             tally.unavailable.append(content.id)
             continue

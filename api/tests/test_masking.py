@@ -136,7 +136,9 @@ def test_parallel_calls_share_one_token(engine, monkeypatch):
 
     def worker():
         barrier.wait(5)
-        results.append(masking._token_for("Bluewren", "PRODUCT", "rev", engine))
+        results.append(
+            masking._token_for("Bluewren", "PRODUCT", "rev", engine, DEMO_ORG_ID)
+        )
 
     threads = [threading.Thread(target=worker) for _ in range(6)]
     for thread in threads:

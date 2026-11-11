@@ -38,7 +38,7 @@ def start_review(
     )
 
 
-def list_findings(engine_review_id: str) -> list[Finding]:
+def list_findings(engine_review_id: str, *, org_id: str | None = None) -> list[Finding]:
     """Every finding in a review. Overrides read severity and verdict from here.
 
     Empty for a review the engine doesn't know, so check `review_status` first:
@@ -50,18 +50,18 @@ def list_findings(engine_review_id: str) -> list[Finding]:
 
     from app.engine import reviews
 
-    with get_sessionmaker()() as session:
+    with org_sessions(get_sessionmaker(), org_id)() as session:
         return reviews.list_findings(engine_review_id, session)
 
 
-def list_chunks(engine_review_id: str) -> list[Chunk]:
+def list_chunks(engine_review_id: str, *, org_id: str | None = None) -> list[Chunk]:
     """The parsed chunks of a review. Accepted fixes are applied to these."""
     if use_mock("ENGINE"):
         return [Chunk.model_validate(c) for c in mock_engine.list_chunks(engine_review_id)]
 
     from app.engine import reviews
 
-    with get_sessionmaker()() as session:
+    with org_sessions(get_sessionmaker(), org_id)() as session:
         return reviews.list_chunks(engine_review_id, session)
 
 

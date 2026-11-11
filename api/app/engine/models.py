@@ -14,10 +14,12 @@ from sqlalchemy import JSON, Boolean, DateTime, Float, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
+from app.tenancy.columns import org_column
 
 
 class Chunk(Base):
     __tablename__ = "chunks"
+    org_id: Mapped[str] = org_column()
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
     content_version_id: Mapped[str] = mapped_column(String, index=True)
@@ -32,6 +34,7 @@ class Chunk(Base):
 
 class ClaimUnit(Base):
     __tablename__ = "claim_units"
+    org_id: Mapped[str] = org_column()
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
     review_id: Mapped[str] = mapped_column(String, index=True)
@@ -48,6 +51,7 @@ class ClaimUnit(Base):
 
 class Finding(Base):
     __tablename__ = "findings"
+    org_id: Mapped[str] = org_column()
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
     review_id: Mapped[str] = mapped_column(String, index=True)
@@ -79,6 +83,7 @@ class Finding(Base):
 
 class ReviewCache(Base):
     __tablename__ = "review_cache"
+    org_id: Mapped[str] = org_column()
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
     # hash(chunk text, channel, rule id@version, prompt ver, model ver, policy ver)

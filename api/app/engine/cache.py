@@ -19,11 +19,11 @@ import uuid
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 
-from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.engine import models
+from app.tenancy import resolve_org, scoped
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +32,11 @@ Clock = Callable[[], datetime]
 
 def cache_key(*parts: str) -> str:
     return hashlib.sha256("\x1f".join(parts).encode()).hexdigest()
+
+
+def org_key(session: Session, key: str) -> str:
+    """The key as stored: the org is part of it, so one org's answer is never another's."""
+    return cache_key(resolve_org(session), key)
 
 
 def _utc_now() -> datetime:
@@ -55,8 +60,8 @@ class VerdictCache:
         try:
             with self._session_factory() as session:
                 row = session.scalar(
-                    select(models.ReviewCache).where(
-                        models.ReviewCache.cache_key == key
+                    scoped(session, models.ReviewCache).where(
+                        models.ReviewCache.cache_key == org_key(session, key)
                     )
                 )
         except Exception:
@@ -84,7 +89,7 @@ class VerdictCache:
     ) -> None:
         row = models.ReviewCache(
             id=str(uuid.uuid4()),
-            cache_key=key,
+            cache_key=None,
             unit_type=unit_type,
             verdict=verdict,
             payload=payload,
@@ -94,9 +99,10 @@ class VerdictCache:
         )
         try:
             with self._session_factory() as session:
+                row.cache_key = stored_key = org_key(session, key)
                 existing = session.scalar(
-                    select(models.ReviewCache).where(
-                        models.ReviewCache.cache_key == key
+                    scoped(session, models.ReviewCache).where(
+                        models.ReviewCache.cache_key == stored_key
                     )
                 )
                 if existing is not None:

@@ -11,13 +11,13 @@ import hashlib
 import os
 import uuid
 
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.content.models import Content
 from app.contracts import ContentState
 from app.governance.models import SpotCheck
 from app.memory.edges import latest_reviews
+from app.tenancy import scoped
 
 
 def _rate() -> float:
@@ -32,12 +32,12 @@ def _drawn(content_id: str, rate: float) -> bool:
 def sample(session: Session) -> list[dict[str, str]]:
     latest = latest_reviews(session)
     published = session.scalars(
-        select(Content.id)
+        scoped(session, Content, Content.id)
         .where(Content.state == ContentState.published.value)
         .order_by(Content.created_at)
     ).all()
     candidates = [content_id for content_id in published if content_id in latest]
-    sampled = set(session.scalars(select(SpotCheck.content_id)))
+    sampled = set(session.scalars(scoped(session, SpotCheck, SpotCheck.content_id)))
     rate = _rate()
     chosen = [c for c in candidates if _drawn(c, rate)] or candidates[:1]
     for content_id in chosen:
@@ -49,5 +49,5 @@ def sample(session: Session) -> list[dict[str, str]]:
                 )
             )
     session.commit()
-    rows = session.scalars(select(SpotCheck).order_by(SpotCheck.sampled_at)).all()
+    rows = session.scalars(scoped(session, SpotCheck).order_by(SpotCheck.sampled_at)).all()
     return [{"content_id": row.content_id, "review_id": row.review_id} for row in rows]

@@ -5,7 +5,7 @@ from __future__ import annotations
 from difflib import SequenceMatcher
 from typing import Any
 
-from sqlalchemy import or_, select
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.auth.models import User
@@ -14,6 +14,7 @@ from app.contracts import DecisionAction, FindingStatus, Precedent
 from app.engine.models import Chunk, Finding
 from app.memory import edges
 from app.memory.models import Edge
+from app.tenancy import scoped, scoped_get
 from app.workflow.models import Decision
 
 # Text similarity, not pgvector cosine: nothing here produces embeddings yet.
@@ -25,10 +26,10 @@ MAX_GRAPH_EDGES = 200
 def impact(fact_id: str, session: Session) -> list[dict[str, str]]:
     """Every piece whose latest review holds a claim citing this fact."""
     edges.sync(session)
-    cites = select(Edge.src_id).where(Edge.type == "CITES", Edge.dst_id == fact_id)
+    cites = scoped(session, Edge, Edge.src_id).where(Edge.type == "CITES", Edge.dst_id == fact_id)
     rows = session.execute(
-        select(Edge, Content.state)
-        .join(Content, Content.id == Edge.src_id)
+        scoped(session, Edge, Edge, Content.state)
+        .scoped_join(session, Content, Content.id == Edge.src_id)
         .where(Edge.type == "CONTAINS", Edge.dst_id.in_(cites))
     ).all()
     found = {(edge.src_id, edge.meta["dst_label"]): state for edge, state in rows}
@@ -41,7 +42,7 @@ def impact(fact_id: str, session: Session) -> list[dict[str, str]]:
 def _flagged_text(finding: Finding, session: Session) -> str:
     pieces = []
     for span in finding.spans or []:
-        chunk = session.get(Chunk, span["chunk_id"])
+        chunk = scoped_get(session, Chunk, span["chunk_id"])
         if chunk is not None:
             pieces.append(chunk.text[span["start"] : span["end"]])
     return " ".join(pieces).casefold()
@@ -53,14 +54,14 @@ def _channel(finding: Finding) -> str | None:
 
 def precedents(finding_id: str, session: Session) -> list[Precedent]:
     """Confirmed overrides of the same rule version, channel and similar text."""
-    finding = session.get(Finding, finding_id)
+    finding = scoped_get(session, Finding, finding_id)
     if finding is None or not finding.rule_id or finding.rule_version is None:
         return []
     text = _flagged_text(finding, session)
     confirmed = session.execute(
-        select(Decision, Finding, User.name)
-        .join(Finding, Finding.id == Decision.finding_id)
-        .join(User, User.id == Decision.actor_id)
+        scoped(session, Decision, Decision, Finding, User.name)
+        .scoped_join(session, Finding, Finding.id == Decision.finding_id)
+        .scoped_join(session, User, User.id == Decision.actor_id)
         .where(
             Decision.status == FindingStatus.override_confirmed.value,
             Finding.rule_id == finding.rule_id,
@@ -78,7 +79,7 @@ def precedents(finding_id: str, session: Session) -> list[Precedent]:
         if SequenceMatcher(None, text, other).ratio() < SIMILAR_TEXT:
             continue
         requested = session.scalar(
-            select(Decision.reason)
+            scoped(session, Decision, Decision.reason)
             .where(
                 Decision.finding_id == earlier.id,
                 Decision.action == DecisionAction.override.value,
@@ -107,7 +108,7 @@ def graph(root: str, session: Session) -> dict[str, list[dict[str, Any]]]:
     found: dict[str, Edge] = {}
     for _ in range(GRAPH_DEPTH):
         rows = session.scalars(
-            select(Edge)
+            scoped(session, Edge)
             .where(or_(Edge.src_id.in_(frontier), Edge.dst_id.in_(frontier)))
             .limit(MAX_GRAPH_EDGES)
         ).all()

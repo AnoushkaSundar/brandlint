@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import hashlib
 
-from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -18,6 +17,7 @@ from app.auth.models import User
 from app.content.models import Content, ContentVersion
 from app.engine.models import ClaimUnit, Finding
 from app.memory.models import Edge
+from app.tenancy import scoped, scoped_delete
 from app.workflow.models import Decision, Review
 
 
@@ -35,8 +35,8 @@ def _edge(
 def latest_reviews(session: Session) -> dict[str, str]:
     """Content id to the engine id of its newest review."""
     rows = session.execute(
-        select(ContentVersion.content_id, Review.engine_review_id)
-        .join(Review, Review.content_version_id == ContentVersion.id)
+        scoped(session, ContentVersion, ContentVersion.content_id, Review.engine_review_id)
+        .scoped_join(session, Review, Review.content_version_id == ContentVersion.id)
         .order_by(Review.created_at)
     ).all()
     return {content_id: review_id for content_id, review_id in rows}
@@ -62,7 +62,7 @@ def _brand_edges(session: Session) -> list[Edge]:
 def _review_edges(session: Session, review_id: str, content: Content) -> list[Edge]:
     node = ("Content", content.id, content.title)
     edges = [_edge("AUTHORED_BY", node, ("Team", content.source, content.source))]
-    claims = session.scalars(select(ClaimUnit).where(ClaimUnit.review_id == review_id))
+    claims = session.scalars(scoped(session, ClaimUnit).where(ClaimUnit.review_id == review_id))
     for claim in claims.all():
         unit = ("Claim", claim.id, claim.normalized_claim)
         edges.append(_edge("CONTAINS", node, unit))
@@ -70,7 +70,7 @@ def _review_edges(session: Session, review_id: str, content: Content) -> list[Ed
             fact_id = dependency["fact_id"]
             edges.append(_edge("CITES", unit, ("Fact", fact_id, fact_id)))
 
-    findings = session.scalars(select(Finding).where(Finding.review_id == review_id))
+    findings = session.scalars(scoped(session, Finding).where(Finding.review_id == review_id))
     for finding in findings.all():
         unit = ("Finding", finding.id, finding.check)
         edges.append(_edge("HAS", node, unit))
@@ -79,8 +79,8 @@ def _review_edges(session: Session, review_id: str, content: Content) -> list[Ed
                 _edge("VIOLATES", unit, ("Rule", finding.rule_id, finding.rule_id))
             )
         decisions = session.execute(
-            select(Decision, User.name)
-            .join(User, User.id == Decision.actor_id)
+            scoped(session, Decision, Decision, User.name)
+            .scoped_join(session, User, User.id == Decision.actor_id)
             .where(Decision.finding_id == finding.id)
         )
         for decision, reviewer in decisions.all():
@@ -94,15 +94,15 @@ def sync(session: Session) -> None:
     """Brings the table in line with what's true now. Safe to run at any time."""
     latest = latest_reviews(session)
     wanted = {edge.id: edge for edge in _brand_edges(session)}
-    contents = session.scalars(select(Content).where(Content.id.in_(latest))).all()
+    contents = session.scalars(scoped(session, Content).where(Content.id.in_(latest))).all()
     for content in contents:
         for edge in _review_edges(session, latest[content.id], content):
             wanted[edge.id] = edge
 
-    existing = set(session.scalars(select(Edge.id)))
+    existing = set(session.scalars(scoped(session, Edge, Edge.id)))
     stale = existing - set(wanted)
     if stale:
-        session.execute(delete(Edge).where(Edge.id.in_(stale)))
+        session.execute(scoped_delete(session, Edge).where(Edge.id.in_(stale)))
     session.add_all(edge for key, edge in wanted.items() if key not in existing)
     try:
         session.commit()

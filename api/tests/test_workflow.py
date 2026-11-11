@@ -98,7 +98,7 @@ def client_for(session):
 
 @pytest.fixture
 def no_findings(monkeypatch):
-    monkeypatch.setattr("app.clients.engine.list_findings", lambda review_id: [])
+    monkeypatch.setattr("app.clients.engine.list_findings", lambda review_id, **kwargs: [])
 
 
 def started(client):
@@ -426,7 +426,7 @@ def test_a_fix_on_hidden_text_is_refused_and_stays_open(client_for, monkeypatch)
     content_id = resolving(creator)
     monkeypatch.setattr(
         "app.clients.engine.list_chunks",
-        lambda review_id: [
+        lambda review_id, **kwargs: [
             chunk("blog-p2", 0, "Tarnhollow Onramp is good", "paragraph").model_copy(
                 update={"style": {"hidden": True}}
             )
@@ -469,7 +469,7 @@ def test_a_blocked_move_says_why_rather_than_blaming_fixes(client_for, monkeypat
     creator = client_for()
     content_id = resolving(creator)
 
-    def explode(*args):
+    def explode(*args, **kwargs):
         raise AssertionError("fixes were read before the move was allowed")
 
     monkeypatch.setattr("app.clients.engine.list_chunks", explode)
@@ -566,7 +566,7 @@ def test_overlapping_fixes_are_refused_when_the_second_is_saved(client_for, monk
     ]
     monkeypatch.setattr(
         "app.clients.engine.list_findings",
-        lambda review_id: [overlapping(item) for item in findings],
+        lambda review_id, **kwargs: [overlapping(item) for item in findings],
     )
 
     assert accept(creator, content_id, HIGH_FIX).status_code == 201

@@ -17,7 +17,6 @@ from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.admin.gaps import save_gaps
@@ -32,7 +31,7 @@ from app.engine.checks import CheckContext
 from app.engine.chunking import ParsedChunk, chunk_document
 from app.engine.parsers import parse
 from app.gateway import policy
-from app.tenancy import org_sessions
+from app.tenancy import org_sessions, scoped
 
 logger = logging.getLogger(__name__)
 
@@ -289,7 +288,7 @@ def review_status(review_id: str, session: Session) -> str:
 def stored_events(review_id: str, session: Session) -> list[tuple[str, dict]] | None:
     """The events of a review finished before this process started, if any."""
     rows = session.scalars(
-        select(models.Finding)
+        scoped(session, models.Finding)
         .where(models.Finding.review_id == review_id)
         .order_by(models.Finding.tier, models.Finding.id)
     ).all()
@@ -324,14 +323,14 @@ def list_chunks(review_id: str, session: Session) -> list[Chunk]:
     if run is not None and run.chunks is not None:
         return [Chunk.model_validate(chunk.as_dict()) for chunk in run.chunks]
     version = session.scalar(
-        select(models.Finding.content_version_id)
+        scoped(session, models.Finding, models.Finding.content_version_id)
         .where(models.Finding.review_id == review_id)
         .limit(1)
     )
     if version is None:
         return []
     rows = session.scalars(
-        select(models.Chunk)
+        scoped(session, models.Chunk)
         .where(models.Chunk.content_version_id == version)
         .order_by(models.Chunk.ordinal)
     ).all()

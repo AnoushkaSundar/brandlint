@@ -8,7 +8,7 @@ from app.clients import engine as engine_client
 from app.content.access import latest_review
 from app.content.models import Content
 from app.contracts import ContentState, Finding, FindingStatus, Severity, Verdict
-from app.tenancy import scoped
+from app.tenancy import bound_org, scoped
 from app.workflow.decisions import FindingProgress, finding_progress
 from app.workflow.schemas import QueueItem
 
@@ -43,7 +43,7 @@ def _items_for(session: Session, content: Content) -> list[QueueItem]:
     progress = finding_progress(session, review)
 
     items = []
-    for finding in engine_client.list_findings(review.engine_review_id):
+    for finding in engine_client.list_findings(review.engine_review_id, org_id=bound_org(session)):
         standing = progress.get(finding.id, FindingProgress())
         kind = _kind_of(finding, standing)
         if kind is None:

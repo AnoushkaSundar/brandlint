@@ -20,7 +20,7 @@ from app.contracts import (
     Severity,
     Verdict,
 )
-from app.tenancy import scoped
+from app.tenancy import bound_org, scoped
 from app.workflow.fixes import can_apply, fix_span, latest_offer, spans_overlap
 from app.workflow.models import AuditLog, Decision, Review
 
@@ -89,7 +89,7 @@ def refused_overrides(session: Session, content_id: str) -> set[FindingKey]:
     return {
         finding_key(finding)
         for engine_review_id, finding_ids in rejected.items()
-        for finding in engine_client.list_findings(engine_review_id)
+        for finding in engine_client.list_findings(engine_review_id, org_id=bound_org(session))
         if finding.id in finding_ids
     }
 
@@ -234,7 +234,7 @@ def record_decision(
                 status.HTTP_409_CONFLICT, "A newer fix was offered. Check it first."
             )
         fix_text = offer.suggested
-    chunks = engine_client.list_chunks(review.engine_review_id) if action in FIXES else []
+    chunks = engine_client.list_chunks(review.engine_review_id, org_id=bound_org(session)) if action in FIXES else []
     if action in FIXES and not can_apply(finding, chunks):
         raise HTTPException(
             status.HTTP_409_CONFLICT,
