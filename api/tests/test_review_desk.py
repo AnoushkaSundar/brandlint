@@ -1,13 +1,7 @@
 """The reviewer queue, comments, history and the audit log."""
 
-import pytest
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
-
 import app.admin.models  # noqa: F401
+import pytest
 from app.admin.seed import seed_brand
 from app.auth.models import User
 from app.auth.router import router as auth_router
@@ -17,6 +11,11 @@ from app.content.router import router as content_router
 from app.contracts import Role
 from app.db import Base, get_session
 from app.workflow.router import router as workflow_router
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 LOW = "fnd-agency-blog-03"
 MEDIUM = "fnd-agency-blog-02"

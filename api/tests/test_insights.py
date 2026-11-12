@@ -1,13 +1,7 @@
 """Governance signals from reviews: override rates, vote splits, gaps and creators."""
 
-import pytest
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
-
 import app.admin.models  # noqa: F401
+import pytest
 from app.admin.models import Gap
 from app.admin.seed import seed_brand
 from app.auth.models import User
@@ -18,6 +12,11 @@ from app.contracts import Role
 from app.db import Base, get_session
 from app.insights.router import router as insights_router
 from app.workflow.router import router as workflow_router
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 # The mock engine's agency blog findings.
 LOW = "fnd-agency-blog-03"  # R-TERM-03

@@ -4,14 +4,8 @@ These are the rules the demo promises, so each one is tested against the server:
 UI hiding a button proves nothing.
 """
 
-import pytest
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, select
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
-
 import app.admin.models  # noqa: F401
+import pytest
 from app.admin.seed import seed_brand
 from app.auth.models import User
 from app.auth.router import router as auth_router
@@ -24,7 +18,12 @@ from app.workflow.decisions import FindingProgress
 from app.workflow.fixes import FixCannotApply, FixesOverlap, text_with_fixes
 from app.workflow.models import AuditLog, Decision, ReviewStateLog
 from app.workflow.router import router as workflow_router
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 from mocks import data
+from sqlalchemy import create_engine, select
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 HIGH_FIX = "fnd-agency-blog-01"
 MEDIUM_FIX = "fnd-agency-blog-02"
