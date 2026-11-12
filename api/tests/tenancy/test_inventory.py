@@ -12,14 +12,19 @@ import pytest
 from app.db import Base
 
 from tests.tenancy import inventory
-from tests.tenancy.inventory import SHARED_TABLES, TENANT_TABLES
+from tests.tenancy.inventory import LANDED_BLOCKS, SHARED_TABLES, TENANT_TABLES
 
 
-def until_block(block: int):
-    return pytest.mark.xfail(
-        strict=True,
-        reason=f"Block {block} adds this. Remove the marker when it passes.",
-    )
+def until_block(block: int) -> list:
+    """An expected failure until the block lands, and an ordinary test after."""
+    if block in LANDED_BLOCKS:
+        return []
+    return [
+        pytest.mark.xfail(
+            strict=True,
+            reason=f"Block {block} adds this. It passes once the block is in LANDED_BLOCKS.",
+        )
+    ]
 
 
 def test_every_table_is_classified():
@@ -44,7 +49,6 @@ def test_only_organizations_is_shared():
     assert not SHARED_TABLES & set(TENANT_TABLES)
 
 
-@until_block(1)
 def test_the_organizations_table_exists():
     assert "organizations" in inventory.model_tables()
 

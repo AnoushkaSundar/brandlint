@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.auth.models import User
+from app.auth.orgs import ensure_demo_org
 from app.auth.security import hash_password
 from app.contracts import Role
 from app.db import get_sessionmaker
@@ -28,7 +29,8 @@ SEED_USERS = [
 
 
 def seed_users(session: Session, password: str = DEFAULT_PASSWORD) -> int:
-    """Adds any missing demo users and returns how many were created."""
+    """Adds any missing demo users to the demo org and returns how many were created."""
+    org = ensure_demo_org(session)
     existing = set(session.scalars(select(User.email)))
     missing = [row for row in SEED_USERS if row[0] not in existing]
     password_hash = hash_password(password)
@@ -39,6 +41,7 @@ def seed_users(session: Session, password: str = DEFAULT_PASSWORD) -> int:
             role=role.value,
             tag=tag,
             password_hash=password_hash,
+            org_id=org.id,
         )
         for email, name, role, tag in missing
     )

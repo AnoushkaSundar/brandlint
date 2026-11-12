@@ -4,7 +4,8 @@ from fastapi import APIRouter, HTTPException, Response, status
 from sqlalchemy import select
 
 from app.auth.dependencies import CurrentUser, SessionDep
-from app.auth.models import User
+from app.auth.models import Organization, User
+from app.auth.orgs import inactive_reason
 from app.auth.schemas import LoginRequest, LoginResponse, UserOut
 from app.auth.security import (
     SESSION_COOKIE,
@@ -29,6 +30,11 @@ def login(body: LoginRequest, response: Response, session: SessionDep) -> LoginR
         raise HTTPException(
             status.HTTP_401_UNAUTHORIZED, "Email or password is incorrect"
         )
+
+    # Only after the password is right, so a stranger can't learn which orgs are suspended.
+    reason = inactive_reason(session.get(Organization, user.org_id))
+    if reason is not None:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, reason)
 
     token = create_token(user)
     # httpOnly keeps the token away from scripts. A cookie also reaches the findings

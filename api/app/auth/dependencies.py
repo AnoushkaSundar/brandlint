@@ -5,7 +5,8 @@ import jwt
 from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
-from app.auth.models import User
+from app.auth.models import Organization, User
+from app.auth.orgs import inactive_reason
 from app.auth.security import SESSION_COOKIE, decode_token
 from app.contracts import Role
 from app.db import get_session
@@ -33,10 +34,14 @@ def current_user(request: Request, session: SessionDep) -> User:
     except jwt.InvalidTokenError:
         raise _unauthenticated() from None
 
-    # The stored role wins over the token, so a role change takes effect at once.
+    # The stored role and org win over the token, so a role change takes effect at
+    # once and a token can't name a workspace it wasn't issued for.
     user = session.get(User, claims["sub"])
     if user is None:
         raise _unauthenticated()
+    reason = inactive_reason(session.get(Organization, user.org_id))
+    if reason is not None:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, reason)
     return user
 
 

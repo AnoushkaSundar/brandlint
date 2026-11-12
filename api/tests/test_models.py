@@ -11,6 +11,7 @@ from sqlalchemy.dialects import postgresql
 from sqlalchemy.schema import CreateTable
 
 PRODUCT_TABLES = {
+    "organizations",
     "users",
     "content",
     "content_versions",

@@ -48,6 +48,8 @@ def create_token(user: User) -> str:
     claims = {
         "sub": user.id,
         "role": user.role,
+        # Only a hint for the browser. The user's row in the database decides the org.
+        "org": str(user.org_id),
         "iat": now,
         "exp": now + SESSION_LIFETIME,
     }

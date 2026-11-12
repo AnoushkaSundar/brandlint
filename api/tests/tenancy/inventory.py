@@ -42,6 +42,10 @@ TENANT_TABLES: dict[str, int] = {
     "eval_runs": 4,
 }
 
+# Blocks that have landed. Their tests must pass, so they carry no expected-failure marker.
+# Add a block here when it merges.
+LANDED_BLOCKS = frozenset({0, 1})
+
 # The organisations themselves can't carry an org_id.
 SHARED_TABLES = frozenset({"organizations"})
 
