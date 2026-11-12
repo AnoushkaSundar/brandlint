@@ -34,6 +34,7 @@ EXEMPT_PATHS = frozenset({"/health", "/engine/health", "/admin/demo/reset", "/or
 EXEMPT_PREFIXES = ("/auth",)
 # The block that makes each router org-aware (docs/multitenancy.md).
 BLOCK_BY_PREFIX = {
+    "/orgs": 1,
     "/admin": 3,
     "/content": 3,
     "/insights": 3,

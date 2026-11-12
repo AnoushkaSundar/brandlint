@@ -226,3 +226,21 @@ export type Proposal = {
   eval?: ProposalEval | null;
   status: ProposalStatus;
 };
+
+// Workspaces (GET /orgs/current). The demo org is Tarnhollow; a sandbox is a visitor's own.
+export type OrgKind = "demo" | "sandbox";
+
+export type Workspace = {
+  id: string;
+  name: string;
+  kind: OrgKind;
+  // A sandbox stops working at this time. Null never expires.
+  expires_at: string | null;
+  // What an empty workspace still needs, for the onboarding checklist.
+  checklist: {
+    guidelines: boolean;
+    approved_rules: boolean;
+    teammates: boolean;
+    first_draft: boolean;
+  };
+};

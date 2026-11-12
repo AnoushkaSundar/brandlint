@@ -1,7 +1,7 @@
 import { AppSidebar } from "@/components/app-sidebar";
 import { AuthProvider } from "@/components/auth-provider";
-import { DemoTour } from "@/components/demo-tour";
-import { DemoSwitcher } from "@/components/demo-switcher";
+import { DemoTools } from "@/components/demo-tools";
+import { ExpiryBanner } from "@/components/expiry-banner";
 import {
   SidebarInset,
   SidebarProvider,
@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { UserMenu } from "@/components/user-menu";
-import { DEMO_MODE } from "@/lib/demo";
+import { WorkspaceBadge } from "@/components/workspace-badge";
 
 // Signed-in shell. /login sits outside this route group.
 export default function AppLayout({ children }: LayoutProps<"/">) {
@@ -26,17 +26,16 @@ export default function AppLayout({ children }: LayoutProps<"/">) {
           <AppSidebar />
           <SidebarInset>
             <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center justify-between gap-2 border-b bg-background/90 px-4 backdrop-blur">
-              <SidebarTrigger />
+              <div className="flex items-center gap-3">
+                <SidebarTrigger />
+                <WorkspaceBadge />
+              </div>
               <div className="flex flex-wrap items-center justify-end gap-3">
-                {DEMO_MODE && (
-                  <>
-                    <DemoTour />
-                    <DemoSwitcher />
-                  </>
-                )}
+                <DemoTools />
                 <UserMenu />
               </div>
             </header>
+            <ExpiryBanner />
             <main
               id="main-content"
               tabIndex={-1}

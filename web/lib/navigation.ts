@@ -7,6 +7,7 @@ import {
   ListChecks,
   type LucideIcon,
   Network,
+  Users,
   Quote,
   ScrollText,
   ShieldCheck,
@@ -90,6 +91,18 @@ export const NAV_GROUPS: readonly NavGroup[] = [
         href: "/brand/assets",
         summary: "Approved logos, palettes and images.",
         icon: ImageIcon,
+        roles: ["admin"],
+      },
+    ],
+  },
+  {
+    label: "Workspace",
+    items: [
+      {
+        title: "People",
+        href: "/people",
+        summary: "Who is in this workspace, and what each person can do.",
+        icon: Users,
         roles: ["admin"],
       },
     ],
