@@ -27,6 +27,7 @@ from sqlalchemy import (
 from sqlalchemy.exc import NoInspectionAvailable
 from sqlalchemy.orm import Mapper, Session
 
+from app.tenancy import rls
 from app.tenancy.errors import NoOrg, NotTenantModel, OrgMismatch
 
 ORG_KEY = "org_id"
@@ -54,8 +55,12 @@ class ScopedSelect(Select):
 
 
 def bind_org(session: Session, org_id: str) -> None:
-    """Ties the session to one org for the rest of its life. The request context does this."""
+    """Ties the session to one org for the rest of its life. The request context does this.
+
+    It also tells the database, so Row-Level Security applies from here on (see rls.py).
+    """
     session.info[ORG_KEY] = str(org_id)
+    rls.follow(session)
 
 
 def bound_org(session: Session) -> str | None:

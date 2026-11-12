@@ -12,10 +12,12 @@ contracts/v1 ships the scaffolding only — no table modules exist yet.
 
 from __future__ import annotations
 
+import os
 from logging.config import fileConfig
 
 from alembic import context
 from app.db import Base, get_engine
+from sqlalchemy import create_engine
 
 config = context.config
 if config.config_file_name is not None:
@@ -58,8 +60,19 @@ def run_migrations_offline() -> None:
         context.run_migrations()
 
 
+def migration_engine():
+    """The owner connection, when the API itself connects as the restricted app role.
+
+    Row-Level Security applies to the app role, so schema changes and seeds that span
+    orgs run as the owner: set MIGRATION_DATABASE_URL to its URL. With it unset the app's
+    own engine is used, as before.
+    """
+    url = os.getenv("MIGRATION_DATABASE_URL")
+    return create_engine(url, future=True) if url else get_engine()
+
+
 def run_migrations_online() -> None:
-    with get_engine().connect() as connection:
+    with migration_engine().connect() as connection:
         context.configure(
             connection=connection,
             target_metadata=target_metadata,

@@ -24,6 +24,12 @@ services:
     environment:
       WEB_ORIGIN: https://${SITE_HOST}
       COOKIE_SECURE: "true"
+      # The API connects as brandlint_app, which Row-Level Security applies to. Superusers
+      # and the table owner bypass it, so the API must never connect as either. Migrations
+      # and the seeds run as the owner, through MIGRATION_DATABASE_URL (see docs/rls.md).
+      DATABASE_URL: postgresql+psycopg://brandlint_app:${APP_DB_PASSWORD:?set APP_DB_PASSWORD in .env, from openssl rand -hex 24}@db:5432/brandlint
+      MIGRATION_DATABASE_URL: postgresql+psycopg://brandlint:brandlint@db:5432/brandlint
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD}
       USE_MOCK_ENGINE: "false"
       USE_MOCK_GATEWAY: "false"
       USE_MOCK_MEMORY: "false"

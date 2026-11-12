@@ -49,6 +49,7 @@ Each organisation is an isolated workspace (see `docs/multitenancy.md`). A table
 - **A query that is right without a scope** (looking a user up by email to find their org) carries `# unscoped-ok: <reason>` on its line or alone on the line above.
 - **A blind spot:** the check reads names, so it can't see a model passed around as a variable. Convert those by hand.
 - `organizations` is the only shared table. It is queried directly.
+- **The database is a second lock.** Row-Level Security refuses another org's rows even if a query forgets its filter (`docs/rls.md`). The API connects as `brandlint_app`, never as the owner or a superuser, which would bypass it. `users` is the one tenant table without it, because sign-in reads a user before any org is known.
 
 ## Stack
 
