@@ -13,10 +13,12 @@ from sqlalchemy import JSON, DateTime, Integer, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
+from app.tenancy.columns import org_column
 
 
 class GatewayLog(Base):
     __tablename__ = "gateway_log"
+    org_id: Mapped[str] = org_column()
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
     created_at: Mapped[datetime] = mapped_column(
@@ -38,6 +40,7 @@ class GatewayLog(Base):
 
 class TokenVault(Base):
     __tablename__ = "token_vault"
+    org_id: Mapped[str] = org_column()
     __table_args__ = (
         UniqueConstraint("scope", "token", name="uq_token_vault_scope_token"),
         UniqueConstraint("scope", "value", name="uq_token_vault_scope_value"),

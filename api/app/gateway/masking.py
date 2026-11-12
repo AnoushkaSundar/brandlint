@@ -24,13 +24,13 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import httpx
-from sqlalchemy import Engine, func, select
+from sqlalchemy import Engine, func
 from sqlalchemy.orm import Session
 
 from app.admin.brand import PROTECTED_CLASSES, list_facts, list_terms
 from app.contracts import DataClass
 from app.gateway.models import TokenVault
-from app.tenancy import bind_org
+from app.tenancy import bind_org, scoped
 
 PRESIDIO_URL = os.getenv("PRESIDIO_ANALYZER_URL", "http://localhost:5002")
 PRESIDIO_TIMEOUT_S = float(os.getenv("PRESIDIO_TIMEOUT_S", "10"))
@@ -139,20 +139,22 @@ def _find_spans(
     return sorted(found)
 
 
-def _token_for(value: str, label: str, scope: str, bind: Engine) -> str:
+def _token_for(
+    value: str, label: str, scope: str, bind: Engine, org_id: str
+) -> str:
     """The token for a value in this scope. Runs in its own transaction so
     parallel calls in one review share tokens instead of racing to number them."""
     with _allocate_lock, Session(bind) as session:
+        bind_org(session, org_id)
         existing = session.scalar(
-            select(TokenVault.token).where(
+            scoped(session, TokenVault, TokenVault.token).where(
                 TokenVault.scope == scope, TokenVault.value == value
             )
         )
         if existing:
             return existing
         count = session.scalar(
-            select(func.count())
-            .select_from(TokenVault)
+            scoped(session, TokenVault, func.count())
             .where(TokenVault.scope == scope, TokenVault.entity == label)
         )
         token = f"[{label}_{(count or 0) + 1}]"
@@ -172,13 +174,14 @@ def _mask_text(
     analyzer: Analyzer | None,
     scope: str,
     bind: Engine,
+    org_id: str,
     masked: Masked,
 ) -> str:
     pieces: list[str] = []
     position = 0
     for start, end, label in _find_spans(text, deny, analyzer):
         value = text[start:end]
-        token = _token_for(value, label, scope, bind)
+        token = _token_for(value, label, scope, bind, org_id)
         masked.tokens[token] = value
         masked.counts[label] += 1
         pieces += [text[position:start], token]
@@ -202,6 +205,7 @@ def mask_messages(
         analyzer = analyze if personal and message.get("role") == "user" else None
         common = {
             "deny": deny, "analyzer": analyzer, "scope": scope, "bind": bind,
+            "org_id": org_id,
             "masked": masked,
         }
         content = message.get("content")

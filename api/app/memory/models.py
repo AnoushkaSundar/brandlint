@@ -13,10 +13,12 @@ from sqlalchemy import JSON, DateTime, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
+from app.tenancy.columns import org_column
 
 
 class Edge(Base):
     __tablename__ = "edges"
+    org_id: Mapped[str] = org_column(primary_key=True)
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
     type: Mapped[str] = mapped_column(String, index=True)

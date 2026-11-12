@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from datetime import date
 
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.contracts import Rule, Span, Verdict
@@ -19,6 +18,7 @@ from app.engine.agents.language import ClassifyFn
 from app.engine.brand import load_brand
 from app.engine.checks import CheckContext, run_tier0
 from app.engine.chunking import ParsedChunk
+from app.tenancy import scoped, scoped_get
 
 
 class NotReplayable(LookupError):
@@ -48,7 +48,7 @@ def _spans(spans: list) -> list[dict]:
 def _replay_language(
     finding: models.Finding, manifest: dict, session: Session, classify: ClassifyFn
 ) -> tuple[str, list[dict]]:
-    row = session.get(models.Chunk, manifest["chunk_id"])
+    row = scoped_get(session, models.Chunk, manifest["chunk_id"])
     if row is None or row.content_hash != manifest["content_hash"]:
         raise NotReplayable("The chunk this verdict judged has changed.")
     chunk = _parsed(row)
@@ -83,7 +83,7 @@ def _replay_claim(
         terms=brand.terms,
         as_of=date.fromisoformat(manifest["as_of"]),
     )
-    first = session.get(models.Chunk, manifest["spans"][0]["chunk_id"])
+    first = scoped_get(session, models.Chunk, manifest["spans"][0]["chunk_id"])
     if first is None:
         raise NotReplayable("The chunk this verdict judged has changed.")
     unit = claims.ClaimUnit(manifest["claim"], manifest["spans"])
@@ -101,7 +101,7 @@ def _replay_document(
     finding: models.Finding, manifest: dict, session: Session, classify: ClassifyFn
 ) -> tuple[str, list[dict]]:
     rows = session.scalars(
-        select(models.Chunk)
+        scoped(session, models.Chunk)
         .where(models.Chunk.content_version_id == finding.content_version_id)
         .order_by(models.Chunk.ordinal)
     ).all()
@@ -125,7 +125,7 @@ def _replay_code(
     finding: models.Finding, manifest: dict, session: Session
 ) -> tuple[str, list[dict]]:
     rows = session.scalars(
-        select(models.Chunk)
+        scoped(session, models.Chunk)
         .where(models.Chunk.content_version_id == finding.content_version_id)
         .order_by(models.Chunk.ordinal)
     ).all()
@@ -148,7 +148,7 @@ def _replay_code(
 
 def replay(finding_id: str, session: Session, classify: ClassifyFn) -> dict | None:
     """{identical, verdict, manifest}, or None if there is no such finding."""
-    finding = session.get(models.Finding, finding_id)
+    finding = scoped_get(session, models.Finding, finding_id)
     if finding is None:
         return None
     manifest = finding.manifest

@@ -21,7 +21,7 @@ from app.contracts import Chunk, Proposal, Role
 from app.db import get_sessionmaker
 from app.engine import evaluation, graph, models, replay, reviews
 from app.engine.access import require_review
-from app.tenancy import bound_org, org_sessions
+from app.tenancy import bound_org, org_sessions, scoped_get
 
 POLL_S = 0.05
 
@@ -80,7 +80,7 @@ def _review_routes() -> APIRouter:
 
     @routes.post("/verdicts/{finding_id}/replay")
     def replay_verdict(finding_id: str, user: CurrentUser, session: SessionDep) -> dict:
-        finding = session.get(models.Finding, finding_id)
+        finding = scoped_get(session, models.Finding, finding_id)
         if finding is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Finding not found")
         require_review(finding.review_id, user, session)

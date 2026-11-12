@@ -72,7 +72,7 @@ def client_for(session):
 
 @pytest.fixture
 def no_findings(monkeypatch):
-    monkeypatch.setattr("app.clients.engine.list_findings", lambda review_id: [])
+    monkeypatch.setattr("app.clients.engine.list_findings", lambda review_id, **kwargs: [])
 
 
 def resolving(client, title="First week guide"):
@@ -193,11 +193,11 @@ def test_one_failing_piece_does_not_empty_the_queue(client_for, monkeypatch):
     real = list_findings
     calls = []
 
-    def flaky(review_id):
+    def flaky(review_id, **kwargs):
         calls.append(review_id)
         if len(calls) == 1:
             raise RuntimeError("engine fell over")
-        return real(review_id)
+        return real(review_id, **kwargs)
 
     monkeypatch.setattr("app.clients.engine.list_findings", flaky)
 

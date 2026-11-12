@@ -26,6 +26,7 @@ from app.engine.agents.language import ClassifyFn
 from app.engine.brand import BrandData, load_brand
 from app.engine.checks import CheckContext, run_tier0
 from app.engine.chunking import ParsedChunk, sha256_text
+from app.tenancy import scoped_get
 
 logger = logging.getLogger(__name__)
 
@@ -166,7 +167,7 @@ def request_fix(
     classify: ClassifyFn,
 ) -> FixSuggestion:
     """One attempt at a fix. Raises NoSafeFix if nothing safe came back."""
-    finding = session.get(models.Finding, finding_id)
+    finding = scoped_get(session, models.Finding, finding_id)
     spans = [s for s in (finding.spans if finding else []) if s["end"] > s["start"]]
     if finding is None or not finding.fix_available or not spans:
         raise NoSafeFix(finding_id)
@@ -175,7 +176,7 @@ def request_fix(
     _attempts[finding_id] += 1
 
     span = spans[-1]
-    row = session.get(models.Chunk, span["chunk_id"])
+    row = scoped_get(session, models.Chunk, span["chunk_id"])
     if row is None:
         raise NoSafeFix(finding_id)
     chunk = _parsed(row)

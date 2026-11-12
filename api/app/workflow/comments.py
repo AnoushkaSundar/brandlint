@@ -9,7 +9,7 @@ from app.auth.models import User
 from app.clients import engine as engine_client
 from app.content.models import Content, ContentVersion
 from app.contracts import Role
-from app.tenancy import scoped, scoped_get
+from app.tenancy import bound_org, scoped, scoped_get
 from app.workflow.models import Comment, Review
 from app.workflow.schemas import CommentIn, CommentOut
 
@@ -76,7 +76,7 @@ def _check_target(session: Session, version: ContentVersion, body: CommentIn) ->
         known = {
             finding.id
             for review in reviews
-            for finding in engine_client.list_findings(review.engine_review_id)
+            for finding in engine_client.list_findings(review.engine_review_id, org_id=bound_org(session))
         }
         if body.finding_id not in known:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Finding not found")
@@ -84,7 +84,7 @@ def _check_target(session: Session, version: ContentVersion, body: CommentIn) ->
         lengths = {
             chunk.id: len(chunk.text)
             for review in reviews
-            for chunk in engine_client.list_chunks(review.engine_review_id)
+            for chunk in engine_client.list_chunks(review.engine_review_id, org_id=bound_org(session))
         }
         span = body.span
         if not 0 <= span.start < span.end <= lengths.get(span.chunk_id, -1):

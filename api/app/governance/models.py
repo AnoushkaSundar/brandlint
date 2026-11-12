@@ -10,10 +10,12 @@ from sqlalchemy import JSON, Boolean, DateTime, Float, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
+from app.tenancy.columns import org_column
 
 
 class Proposal(Base):
     __tablename__ = "proposals"
+    org_id: Mapped[str] = org_column()
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
     rule_id: Mapped[str] = mapped_column(String, index=True)
@@ -30,6 +32,7 @@ class Proposal(Base):
 
 class SpotCheck(Base):
     __tablename__ = "spot_checks"
+    org_id: Mapped[str] = org_column()
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
     content_id: Mapped[str] = mapped_column(String, index=True)
@@ -43,6 +46,7 @@ class SpotCheck(Base):
 
 class EvalRun(Base):
     __tablename__ = "eval_runs"
+    org_id: Mapped[str] = org_column()
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
     kind: Mapped[str] = mapped_column(String)  # gate | full

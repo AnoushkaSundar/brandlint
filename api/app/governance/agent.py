@@ -20,7 +20,6 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from pydantic import BaseModel
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.admin.rulebook import rulebook_at
@@ -35,6 +34,7 @@ from app.contracts import (
 )
 from app.engine.models import Chunk, Finding
 from app.governance.models import Proposal as ProposalRow
+from app.tenancy import scoped, scoped_get
 from app.workflow.models import Decision
 
 logger = logging.getLogger(__name__)
@@ -68,8 +68,8 @@ class Evidence:
 
 def _confirmed_overrides(session: Session) -> dict[str, Evidence]:
     rows = session.execute(
-        select(Finding, Decision)
-        .join(Decision, Decision.finding_id == Finding.id)
+        scoped(session, Finding, Finding, Decision)
+        .scoped_join(session, Decision, Decision.finding_id == Finding.id)
         .where(
             Decision.status == FindingStatus.override_confirmed.value,
             Finding.rule_id.is_not(None),
@@ -80,7 +80,7 @@ def _confirmed_overrides(session: Session) -> dict[str, Evidence]:
     for finding, decision in rows:
         spans = [s for s in finding.spans or [] if _usable(s, session)]
         reason = decision.reason or session.scalar(
-            select(Decision.reason)
+            scoped(session, Decision, Decision.reason)
             .where(
                 Decision.finding_id == finding.id,
                 Decision.action == DecisionAction.override.value,
@@ -97,12 +97,12 @@ def _confirmed_overrides(session: Session) -> dict[str, Evidence]:
 
 def _usable(span: dict[str, Any], session: Session) -> bool:
     """Restricted text stays on this machine, so it can't be evidence in a cloud call."""
-    chunk = session.get(Chunk, span["chunk_id"])
+    chunk = scoped_get(session, Chunk, span["chunk_id"])
     return chunk is not None and chunk.data_class != "restricted"
 
 
 def _quote(span: dict[str, Any], session: Session) -> str:
-    chunk = session.get(Chunk, span["chunk_id"])
+    chunk = scoped_get(session, Chunk, span["chunk_id"])
     return chunk.text[span["start"] : span["end"]]
 
 
@@ -144,7 +144,7 @@ def _parse(raw: Any) -> str:
 
 def _settled(rule_id: str, count: int, session: Session) -> bool:
     """A pending proposal stands, and a refused one waits for new evidence."""
-    rows = session.scalars(select(ProposalRow).where(ProposalRow.rule_id == rule_id)).all()
+    rows = session.scalars(scoped(session, ProposalRow).where(ProposalRow.rule_id == rule_id)).all()
     return any(
         row.status == ProposalStatus.pending.value or row.evidence.get("count", 0) >= count
         for row in rows
@@ -160,7 +160,7 @@ def _to_contract(row: ProposalRow) -> Proposal:
 
 def pending(session: Session) -> list[Proposal]:
     rows = session.scalars(
-        select(ProposalRow)
+        scoped(session, ProposalRow)
         .where(ProposalRow.status == ProposalStatus.pending.value)
         .order_by(ProposalRow.created_at)
     ).all()
