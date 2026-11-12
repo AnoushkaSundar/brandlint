@@ -8,7 +8,6 @@ import threading
 import app.admin.models  # noqa: F401
 import pytest
 from app.auth.models import Organization, User
-from app.tenancy.scoped import bind_org
 from app.auth.router import router as auth_router
 from app.auth.security import SESSION_COOKIE, create_token, hash_password
 from app.collab import hub as hub_module
@@ -20,6 +19,7 @@ from app.collab.router import router as collab_router
 from app.content.models import Content, ContentVersion
 from app.content.router import router as content_router
 from app.db import Base, get_session
+from app.tenancy.scoped import bind_org
 from app.workflow.models import Comment, Decision, Review, ReviewStateLog
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
