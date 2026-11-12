@@ -10,22 +10,22 @@ import re
 import secrets
 import threading
 import time
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 
 from app.auth.defaults import utc_now
-from app.auth.dependencies import SessionDep
+from app.auth.dependencies import CurrentUser, SessionDep
 from app.auth.models import Organization, User
 from app.auth.orgs import OrgKind, OrgStatus
 from app.auth.router import set_session_cookie
 from app.auth.schemas import LoginResponse, UserOut
 from app.auth.security import create_token, hash_password
 from app.contracts import Role
-from app.tenancy import bind_org
+from app.tenancy import bind_org, scoped
 from app.tenancy.rls import auth_lookup
 
 router = APIRouter(prefix="/orgs", tags=["workspaces"])
@@ -124,3 +124,45 @@ def create_workspace(
     token = create_token(user)
     set_session_cookie(response, token)
     return LoginResponse(access_token=token, user=UserOut.model_validate(user))
+
+
+class Checklist(BaseModel):
+    """What an empty workspace still needs, for the onboarding checklist."""
+
+    guidelines: bool
+    approved_rules: bool
+    teammates: bool
+    first_draft: bool
+
+
+class WorkspaceOut(BaseModel):
+    id: str
+    name: str
+    kind: str
+    expires_at: datetime | None
+    checklist: Checklist
+
+
+@router.get("/current", response_model=WorkspaceOut)
+def current_workspace(user: CurrentUser, session: SessionDep) -> WorkspaceOut:
+    """The caller's own workspace. The org comes from the signed-in user, never the request."""
+    from app.admin.models import IngestJob, Rule
+    from app.content.models import Content
+
+    org = session.get(Organization, user.org_id)
+
+    def any_row(model, *where) -> bool:
+        return session.scalar(scoped(session, model, func.count()).where(*where)) > 0
+
+    return WorkspaceOut(
+        id=org.id,
+        name=org.name,
+        kind=org.kind,
+        expires_at=org.expires_at,
+        checklist=Checklist(
+            guidelines=any_row(IngestJob) or any_row(Rule),
+            approved_rules=any_row(Rule, Rule.status == "approved"),
+            teammates=session.scalar(scoped(session, User, func.count())) > 1,
+            first_draft=any_row(Content),
+        ),
+    )
