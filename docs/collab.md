@@ -39,16 +39,20 @@ Events (`id` rises per piece, so `Last-Event-ID` works):
 
 - **No change to the workflow code.** A SQLAlchemy hook (`app/collab/publish.py`) notes the decisions, state changes and comments a request adds, and publishes them **after the commit**, so nobody hears about something that was rolled back. A failure there is logged and swallowed, and can't fail a decision.
 - **A hub per process** (`app/collab/hub.py`) keeps the last 200 events for each piece, who is connected, and what each person is looking at. A slow browser that falls 200 events behind is told to resync instead of being sent half a history.
+- **Several API processes share one live room** (`app/collab/bus.py`) through Postgres LISTEN/NOTIFY, with no new table. Each process applies an event at once and sends it on; the others apply it too, so a decision made on one reaches streams on any. Presence is shared as each process's own viewers, resent every 10 seconds and forgotten after 30 without a word, so a crashed process leaves no ghosts. A focus request that reaches a process other than the one holding the person's stream is forwarded to it. A process that loses its listening connection tells its open streams to reload. Sending never waits on the database. On a database without NOTIFY (SQLite) the hub just works alone.
 - **A conflict is a heuristic.** Two different people each settling the same finding within 60 seconds. Only rulings count: a request that leaves the finding waiting for a reviewer doesn't. The hub can't know whether the second had seen the first, so it says what happened and leaves the call to them. The server's own checks still refuse an action that is no longer allowed.
 
 ## Limits
 
-- **One API process only.** The hub is in memory. With several workers, a decision on one isn't seen by streams on another. That needs Postgres LISTEN/NOTIFY or Redis, and isn't built. The compose file runs one worker.
+- **Messages aren't stored.** A message reaches the processes listening at that moment. A browser that reconnects to a process that held none of its events is told to reload the board, so nothing is lost, but missed events aren't replayed. A notification is capped at about 7.5 KB, so a very long reason is cut in what other processes see.
+- **A conflict is announced by the process that records the second ruling.** It knows of the first from the bus, which is only as quick as a notification; two rulings landing in the same few milliseconds on two processes can each miss the other.
 - **A restart empties the hub.** Browsers reconnect by themselves and reload the board, so nothing is lost, but missed events aren't replayed.
 - **Presence is for whoever has a stream open.** Closing the tab leaves the room at once. A browser that vanishes without closing is dropped when the server notices the connection is gone.
 - **Edits to the draft aren't live.** Only the review: decisions, state changes, comments and who is looking at what.
 - **Proxies must not buffer.** The production Caddy file already turns buffering off for `/api`, and the stream sends an `X-Accel-Buffering: no` header for nginx.
 
 ## Tests
+
+`api/tests/test_collab_processes.py`: two hubs joined by a wire (events, presence, a crashed process, forwarded focus, cross-process conflicts, a reconnect to a process that saw nothing) and, with `RLS_TEST_DATABASE_URL` set, the real Postgres bus. `demo/check_collab.py` runs it live: with `API2` set, the stream is followed on a second API process.
 
 `api/tests/test_collab.py`: the hub (ordering, replay, resync, presence, conflicts, many threads at once), the stream, the commit hooks (a rolled-back decision publishes nothing, a failing hub never fails a decision), and who may follow. The tenancy harness (`api/tests/tenancy/routes.py`) calls every route, so it swaps an endless stream for a one-frame one: the real authorization still runs.

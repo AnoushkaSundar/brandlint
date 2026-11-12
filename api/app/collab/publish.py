@@ -15,6 +15,7 @@ from sqlalchemy import event
 from sqlalchemy.orm import Session
 
 from app.auth.models import User
+from app.collab import bus
 from app.collab.hub import Person, hub
 from app.content.models import ContentVersion
 from app.tenancy import bind_org, bound_org
@@ -28,19 +29,30 @@ def _snapshot(row: Any) -> tuple[str, dict[str, Any]] | None:
     """What an event needs from a new row, taken at flush while its values are set."""
     if isinstance(row, Decision):
         return "decision", {
-            "id": row.id, "review_id": row.review_id, "finding_id": row.finding_id,
-            "actor_id": row.actor_id, "role": row.role, "action": row.action,
-            "status": row.status, "reason": row.reason,
+            "id": row.id,
+            "review_id": row.review_id,
+            "finding_id": row.finding_id,
+            "actor_id": row.actor_id,
+            "role": row.role,
+            "action": row.action,
+            "status": row.status,
+            "reason": row.reason,
         }
     if isinstance(row, ReviewStateLog):
         return "state", {
-            "id": row.id, "content_id": row.content_id, "actor_id": row.actor_id,
-            "from": row.from_state, "to": row.to_state, "reason": row.reason,
+            "id": row.id,
+            "content_id": row.content_id,
+            "actor_id": row.actor_id,
+            "from": row.from_state,
+            "to": row.to_state,
+            "reason": row.reason,
         }
     if isinstance(row, Comment):
         return "comment", {
-            "id": row.id, "content_version_id": row.content_version_id,
-            "finding_id": row.finding_id, "actor_id": row.author_id,
+            "id": row.id,
+            "content_version_id": row.content_version_id,
+            "finding_id": row.finding_id,
+            "actor_id": row.author_id,
         }
     return None
 
@@ -71,6 +83,7 @@ def announce(session: Session) -> None:
 
 
 def _publish(session: Session, pending: list[tuple[str, dict[str, Any]]]) -> None:
+    bus.ensure_started()
     with Session(session.get_bind()) as lookup:
         org = bound_org(session)
         if org is not None:
@@ -82,7 +95,9 @@ def _publish(session: Session, pending: list[tuple[str, dict[str, Any]]]) -> Non
                 # unscoped-ok: looked up by id, in the committing session's own org
                 user = lookup.get(User, user_id)
                 people[user_id] = Person(
-                    user_id, user.name if user else "Someone", role or (user.role if user else "")
+                    user_id,
+                    user.name if user else "Someone",
+                    role or (user.role if user else ""),
                 )
             return people[user_id]
 
@@ -101,26 +116,46 @@ def _publish(session: Session, pending: list[tuple[str, dict[str, Any]]]) -> Non
                 if content_id is None:
                     continue
                 actor = person(row["actor_id"], row["role"])
-                hub.publish(content_id, "decision", {
-                    "id": row["id"], "finding_id": row["finding_id"], "actor": actor.as_dict(),
-                    "action": row["action"], "status": row["status"], "reason": row["reason"],
-                })
+                hub.publish(
+                    content_id,
+                    "decision",
+                    {
+                        "id": row["id"],
+                        "finding_id": row["finding_id"],
+                        "actor": actor.as_dict(),
+                        "action": row["action"],
+                        "status": row["status"],
+                        "reason": row["reason"],
+                    },
+                )
                 clash = hub.note_decision(
                     content_id, row["finding_id"], actor, row["action"], row["status"]
                 )
                 if clash is not None:
                     hub.publish(content_id, "conflict", clash)
             elif kind == "state":
-                hub.publish(row["content_id"], "state", {
-                    "id": row["id"], "from": row["from"], "to": row["to"],
-                    "actor": person(row["actor_id"]).as_dict(), "reason": row["reason"],
-                })
+                hub.publish(
+                    row["content_id"],
+                    "state",
+                    {
+                        "id": row["id"],
+                        "from": row["from"],
+                        "to": row["to"],
+                        "actor": person(row["actor_id"]).as_dict(),
+                        "reason": row["reason"],
+                    },
+                )
             elif kind == "comment":
                 # unscoped-ok: looked up by id, in the committing session's own org
                 version = lookup.get(ContentVersion, row["content_version_id"])
                 if version is None:
                     continue
-                hub.publish(version.content_id, "comment", {
-                    "id": row["id"], "finding_id": row["finding_id"],
-                    "actor": person(row["actor_id"]).as_dict(),
-                })
+                hub.publish(
+                    version.content_id,
+                    "comment",
+                    {
+                        "id": row["id"],
+                        "finding_id": row["finding_id"],
+                        "actor": person(row["actor_id"]).as_dict(),
+                    },
+                )

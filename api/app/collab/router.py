@@ -17,6 +17,7 @@ from pydantic import BaseModel
 
 import app.collab.publish  # noqa: F401  registers the commit hooks
 from app.auth.dependencies import CurrentUser, SessionDep, current_user
+from app.collab import bus
 from app.collab.hub import RESYNC, Event, Hub, Person, hub
 from app.content.access import readable_content
 
@@ -96,8 +97,11 @@ async def events(
     last_event_id: str | None = Header(default=None),
 ) -> StreamingResponse:
     await run_in_threadpool(readable_content, content_id, user, session)
+    await run_in_threadpool(bus.ensure_started)
     person = _person(user)  # copied now: the session is closed by the time this streams
-    body = follow(hub, content_id, person, _last_id(last_event_id), request.is_disconnected)
+    body = follow(
+        hub, content_id, person, _last_id(last_event_id), request.is_disconnected
+    )
     return StreamingResponse(
         body,
         media_type="text/event-stream",
@@ -109,11 +113,15 @@ async def events(
 @router.get("/content/{content_id}/presence")
 def presence(content_id: str, user: CurrentUser, session: SessionDep) -> dict:
     readable_content(content_id, user, session)
+    bus.ensure_started()
     return hub.presence(content_id)
 
 
 @router.post("/content/{content_id}/presence")
-def look_at(content_id: str, body: Focus, user: CurrentUser, session: SessionDep) -> dict:
+def look_at(
+    content_id: str, body: Focus, user: CurrentUser, session: SessionDep
+) -> dict:
     """Which finding the caller is looking at. Only counts while their stream is open."""
     readable_content(content_id, user, session)
+    bus.ensure_started()
     return hub.focus(content_id, _person(user), body.finding_id)
