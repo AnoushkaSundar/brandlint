@@ -176,7 +176,7 @@ def test_the_job_summary_says_a_pass_is_not_an_approval(serve, repo, monkeypatch
     summary = repo / "summary.md"
     monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary))
     run(serve([finding()]))
-    text = summary.read_text()
+    text = summary.read_text(encoding="utf-8")
     assert "open the review" in text
     assert "isn't an approval" in text
 
