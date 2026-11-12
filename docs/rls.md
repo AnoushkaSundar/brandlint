@@ -4,7 +4,7 @@ The app scopes every tenant query by org (`app/tenancy`). Row-Level Security (RL
 
 ## How it works
 
-- **A policy on every tenant table** (24 of the 25: see "The one exception"): a row is visible, and can be written, only when its `org_id` equals the `app.org_id` setting of the current transaction. With no setting, nothing matches. The policy is `FORCE`d, so the table's owner is held to it too.
+- **A policy on every tenant table** (all 25, `users` included: see "`users`"): a row is visible, and can be written, only when its `org_id` equals the `app.org_id` setting of the current transaction. With no setting, nothing matches. The policy is `FORCE`d, so the table's owner is held to it too.
 - **The setting is set per transaction** (`set_config(..., true)`), so it can't outlive the transaction or leak to the next user of a pooled connection. `app/tenancy/rls.py` sets it when a bound session begins a transaction, and when `bind_org` binds a session that already began one (the user is looked up before the org is known).
 - **The API connects as `brandlint_app`:** not a superuser, not able to bypass RLS, and owner of no table. Superusers and owners bypass RLS, so connecting as either would switch the lock off.
 - **Only Postgres.** On any other database the hook does nothing, so the SQLite tests are unaffected.
@@ -27,11 +27,9 @@ The migration creates `brandlint_app` with no login, and gives it one when `APP_
    `docker compose exec db psql -U brandlint -d brandlint -c "select usename, count(*) from pg_stat_activity where datname='brandlint' group by 1"` must show `brandlint_app`, and never `brandlint`, for the API's connections.
 5. **Rollback:** stop the API, run `alembic downgrade alapan_0005`, and point `DATABASE_URL` back at the owner. The downgrade drops the policies and the role, and fails while the API is still connected as it.
 
-## The one exception: `users`
+## `users`
 
-Signing in finds a user by email, and every request finds the user by id, **before any org is known**. An org-based policy on `users` would lock everyone out. So `users` is the one tenant table without RLS. Everywhere else, users are read through the scoped helpers, and the isolation suite covers it.
-
-It can be closed. It needs a small change in `app/auth` (Anoushka's folder): the three lookups made before the org is known (`current_user`, `login`, `seed_users`) run inside an `auth_lookup(session)` block that sets a second transaction-local setting, and `users` gets a policy of `org_id = app.org_id OR app.auth = 'on'`. Then `users` leaves the exception list in `tests/test_rls.py`.
+Signing in finds a user by email, and every request finds its user by id, **before any org is known**. So `users` has the same policy as the other tables, plus one way through: a transaction that sets `app.auth` to `on` can read users across orgs. `auth_lookup(session)` in `app/tenancy/rls.py` sets it, only the two lookups made before the org is known use it (`current_user` and `login`), and it is cleared as the block ends. Writes are held to the org rule only (`anoushka_0008`).
 
 ## Things to know
 

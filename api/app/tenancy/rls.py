@@ -19,11 +19,17 @@ On any database but Postgres this does nothing, so the SQLite tests are unaffect
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
+
 from sqlalchemy import event, text
 from sqlalchemy.engine import Connection
 from sqlalchemy.orm import Session
 
 SETTING = "app.org_id"
+# Lets a block read users across orgs. Only `users` has a policy that looks at it, and only
+# the lookups made before the org is known set it (see auth_lookup).
+AUTH_SETTING = "app.auth"
 # The same key `bind_org` stores the org under. Kept here so this module needs no import
 # of scoped.py, which imports it.
 INFO_KEY = "org_id"
@@ -51,3 +57,25 @@ def follow(session: Session) -> None:
     org = session.info.get(INFO_KEY)
     if org is not None and session.in_transaction():
         apply(session.connection(), org)
+
+
+@contextmanager
+def auth_lookup(session: Session) -> Iterator[None]:
+    """For the lookups made before the org is known: sign-in by email, a request's user by id.
+
+    `users` is the one table whose policy lets these through. The setting is cleared as the
+    block ends, so the rest of the request is held to its org. If the block fails, the
+    transaction is rolled back, which clears it too.
+    """
+    _set_auth(session, "on")
+    yield
+    _set_auth(session, "")
+
+
+def _set_auth(session: Session, value: str) -> None:
+    if session.get_bind().dialect.name != "postgresql":
+        return
+    session.execute(
+        text("SELECT set_config(:setting, :value, true)"),
+        {"setting": AUTH_SETTING, "value": value},
+    )

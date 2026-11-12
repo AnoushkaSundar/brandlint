@@ -13,6 +13,7 @@ from app.auth.security import (
     create_token,
     verify_password,
 )
+from app.tenancy.rls import auth_lookup
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -25,7 +26,8 @@ def _cookie_is_secure() -> bool:
 def login(body: LoginRequest, response: Response, session: SessionDep) -> LoginResponse:
     email = body.email.strip().lower()
     # unscoped-ok: emails are unique across orgs, and the org is read from the user found
-    user = session.scalar(select(User).where(User.email == email))
+    with auth_lookup(session):
+        user = session.scalar(select(User).where(User.email == email))
     stored_hash = user.password_hash if user else None
     if not verify_password(body.password, stored_hash):
         raise HTTPException(

@@ -20,6 +20,7 @@ from alembic import command
 from alembic.config import Config
 from app.content.models import Content
 from app.tenancy import bind_org, org_sessions, rls
+from app.tenancy.rls import auth_lookup
 from sqlalchemy import create_engine, event, select, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import DBAPIError
@@ -246,7 +247,7 @@ def test_the_app_role_cannot_bypass_security(db):
 
 
 @postgres
-def test_every_tenant_table_but_users_is_locked_and_users_is_the_only_exception(db):
+def test_every_tenant_table_is_locked(db):
     with db.owner.connect() as connection:
         with_org = {
             r[0]
@@ -269,8 +270,8 @@ def test_every_tenant_table_but_users_is_locked_and_users_is_the_only_exception(
         with_policy = {
             r[0] for r in connection.execute(text("SELECT tablename FROM pg_policies"))
         }
-    assert with_org - locked == {"users"}
-    assert with_org - with_policy == {"users"}
+    assert with_org - locked == set()
+    assert with_org - with_policy == set()
     assert locked <= with_org
 
 
@@ -380,10 +381,16 @@ def test_a_background_session_sees_only_its_org(db):
 
 
 @postgres
-def test_users_stay_readable_so_sign_in_can_find_them(db):
-    """The documented exception: signing in looks a user up before any org is known."""
+def test_users_are_locked_except_inside_an_auth_lookup(db):
+    """Sign-in looks a user up before any org is known; nothing else may read across orgs."""
     with as_org(db.app, None) as session:
-        assert count(session, "users") == 2
+        assert count(session, "users") == 0
+    with as_org(db.app, ORG_A) as session:
+        assert count(session, "users") == 1  # a forgotten filter still sees only its org
+    with as_org(db.app, None) as session:
+        with auth_lookup(session):
+            assert count(session, "users") == 2
+        assert count(session, "users") == 0  # and the way in closes when the block ends
 
 
 @postgres
@@ -406,6 +413,6 @@ def test_the_migration_downgrades_and_upgrades_again(monkeypatch):
         with built.owner.connect() as connection:
             assert connection.execute(text("SELECT count(*) FROM pg_policies")).scalar_one() == len(
                 migration_module().TENANT_TABLES
-            )
+            ) + 1  # users, from anoushka_0008
     finally:
         built.drop()
