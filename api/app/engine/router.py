@@ -21,6 +21,7 @@ from app.contracts import Chunk, Proposal, Role
 from app.db import get_sessionmaker
 from app.engine import evaluation, graph, models, replay, reviews
 from app.engine.access import require_review
+from app.gateway import policy
 from app.tenancy import bound_org, org_sessions, scoped_get
 
 POLL_S = 0.05
@@ -84,11 +85,16 @@ def _review_routes() -> APIRouter:
         if finding is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Finding not found")
         require_review(finding.review_id, user, session)
-        classify = graph.gateway_classify(
-            org_sessions(get_sessionmaker(), bound_org(session))
-        )
+        # Both voters call the model for the caller's org.
+        factory = org_sessions(get_sessionmaker(), bound_org(session))
+        classify = graph.gateway_classify(factory)
         try:
-            result = replay.replay(finding_id, session, classify)
+            result = replay.replay(
+                finding_id,
+                session,
+                classify,
+                graph.gateway_classify(factory, policy.SECOND_MODEL),
+            )
         except replay.NotReplayable as exc:
             raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from None
         if result is None:

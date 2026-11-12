@@ -166,6 +166,7 @@ def _execute(
     rulebook_version: int,
     source: ContentSource,
     classify: graph.ClassifyFn,
+    second: graph.ClassifyFn | None,
     session_factory: SessionFactory,
     brand_loader: BrandLoader,
     gap_sink: GapSink,
@@ -220,6 +221,7 @@ def _execute(
             claim_sink=_claim_log(session_factory, run),
             model=model,
             product_checks=product_checks,
+            second=second,
         )
         base = {
             "fmt": check_format,
@@ -260,6 +262,8 @@ def start_review(
         rulebook_version,
         source,
         classify or graph.gateway_classify(session_factory),
+        # An injected model is a test: it shouldn't reach the real second voter.
+        None if classify else graph.gateway_classify(session_factory, policy.SECOND_MODEL),
         session_factory,
         brand_loader or _rulebook(session_factory),
         gap_sink or _gap_log(session_factory),

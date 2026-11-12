@@ -35,7 +35,7 @@ def captured(monkeypatch):
     """The session factories handed to the model-call builders."""
     seen: list = []
 
-    def record(factory):
+    def record(factory, model=None):
         seen.append(factory)
 
         def refuse(*args, **kwargs):
@@ -121,6 +121,7 @@ def test_starting_a_review_hands_its_background_sessions_the_org(world, monkeypa
         org_id=world.a.org.id,
     )
 
-    session_factory = handed[0][5]
+    # run, channel, version, source, classify, second, then the session factory.
+    session_factory = handed[0][6]
     with session_factory() as session:
         assert bound_org(session) == world.a.org.id
