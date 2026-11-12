@@ -24,7 +24,9 @@ from app.content.schemas import (
     VersionOut,
 )
 from app.contracts import ContentSource, ContentState, DataClass, Role
-from app.tenancy import scoped, scoped_get
+from app.gateway import budget
+from app.gateway.budget import BudgetExceeded
+from app.tenancy import limits, scoped, scoped_get
 from app.workflow.models import Review
 from app.workflow.transitions import move_content
 
@@ -169,7 +171,10 @@ def create_content(
     file: Upload = None,
 ) -> ContentDetail:
     _refuse_nul(title, source)
+    limits.check_content(session)
     body, upload = _body_from(text, file)
+    if upload is not None:
+        limits.check_upload_size(session, len(upload.data))
     content = Content(
         title=title.strip(),
         channel=channel,
@@ -271,6 +276,11 @@ def start_review(content_id: str, user: Creator, session: SessionDep) -> Review:
                 else ("This review has already finished.")
             )
             raise HTTPException(status.HTTP_409_CONFLICT, message)
+    limits.check_reviews_today(session)
+    try:
+        budget.check(session)
+    except BudgetExceeded as exc:
+        raise limits.over(str(exc)) from None
     # A review against no rules would pass everything, so say what is missing instead.
     try:
         rulebook_at(session)

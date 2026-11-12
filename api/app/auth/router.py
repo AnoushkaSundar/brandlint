@@ -22,6 +22,20 @@ def _cookie_is_secure() -> bool:
     return os.environ.get("COOKIE_SECURE", "").lower() == "true"
 
 
+def set_session_cookie(response: Response, token: str) -> None:
+    # httpOnly keeps the token away from scripts. A cookie also reaches the findings
+    # stream, because EventSource can't send an Authorization header.
+    response.set_cookie(
+        SESSION_COOKIE,
+        token,
+        max_age=int(SESSION_LIFETIME.total_seconds()),
+        httponly=True,
+        samesite="lax",
+        secure=_cookie_is_secure(),
+        path="/",
+    )
+
+
 @router.post("/login", response_model=LoginResponse)
 def login(body: LoginRequest, response: Response, session: SessionDep) -> LoginResponse:
     email = body.email.strip().lower()
@@ -40,17 +54,7 @@ def login(body: LoginRequest, response: Response, session: SessionDep) -> LoginR
         raise HTTPException(status.HTTP_403_FORBIDDEN, reason)
 
     token = create_token(user)
-    # httpOnly keeps the token away from scripts. A cookie also reaches the findings
-    # stream, because EventSource can't send an Authorization header.
-    response.set_cookie(
-        SESSION_COOKIE,
-        token,
-        max_age=int(SESSION_LIFETIME.total_seconds()),
-        httponly=True,
-        samesite="lax",
-        secure=_cookie_is_secure(),
-        path="/",
-    )
+    set_session_cookie(response, token)
     return LoginResponse(access_token=token, user=UserOut.model_validate(user))
 
 

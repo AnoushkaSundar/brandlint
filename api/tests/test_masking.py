@@ -7,6 +7,7 @@ import threading
 import pytest
 from app.admin import models as admin_models
 from app.admin.seed import seed_brand
+from app.auth.models import Organization
 from app.auth.orgs import DEMO_ORG_ID
 from app.contracts import Rule
 from app.db import Base
@@ -32,7 +33,8 @@ def engine():
         poolclass=StaticPool,
     )
     Base.metadata.create_all(
-        built, tables=[GatewayLog.__table__, TokenVault.__table__]
+        built,
+        tables=[GatewayLog.__table__, TokenVault.__table__, Organization.__table__],
     )
     return built
 
