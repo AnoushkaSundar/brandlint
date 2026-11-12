@@ -49,6 +49,14 @@ _legacy_test_running = False
 
 
 @pytest.fixture(autouse=True)
+def _never_migrate_a_real_database(monkeypatch):
+    """Migrations pick MIGRATION_DATABASE_URL over the app's own URL, as production needs.
+    A test that runs migrations on a temporary database must never be redirected to a real
+    one, so the tests ignore the variable unless one of them sets it itself."""
+    monkeypatch.delenv("MIGRATION_DATABASE_URL", raising=False)
+
+
+@pytest.fixture(autouse=True)
 def _legacy_org_defaults(request):
     global _legacy_test_running
     path = request.node.path
