@@ -8,6 +8,7 @@ import threading
 import app.admin.models  # noqa: F401
 import pytest
 from app.auth.models import Organization, User
+from app.tenancy.scoped import bind_org
 from app.auth.router import router as auth_router
 from app.auth.security import SESSION_COOKIE, create_token, hash_password
 from app.collab import hub as hub_module
@@ -327,6 +328,8 @@ def db(tmp_path):
     maker = sessionmaker(engine, expire_on_commit=False)
     with maker() as session:
         session.add(Organization(id=ORG, name="Org", slug="org", kind="sandbox", status="active"))
+        session.flush()
+        bind_org(session, ORG)  # rows added from here on belong to the org, as in a request
         for ident, name, role in (
             ("u-creator", "Priya", "creator"), ("u-lena", "Lena", "reviewer"),
             ("u-marcus", "Marcus", "reviewer"), ("u-other", "Sam", "creator"),
