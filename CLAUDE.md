@@ -102,6 +102,10 @@ docker compose exec api pytest        # backend tests
 docker compose exec api alembic upgrade head
 cd web && npm run dev                 # frontend only
 cd web && npx playwright test         # end-to-end tests
+docker compose exec api pytest tests/tenancy      # isolation suite
+RLS_TEST_DATABASE_URL=<superuser url> docker compose exec api pytest tests/test_rls.py  # RLS, needs Postgres
+python demo/check_workspaces.py                   # two workspaces on a running stack (no model calls)
+docker compose exec api python -m app.tenancy.expiry   # delete expired sandbox workspaces
 ```
 
 Update this section when the real commands differ.

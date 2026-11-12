@@ -41,7 +41,7 @@ def documented_routes() -> set[tuple[str, str]]:
     for line in DOCS.read_text(encoding="utf-8").splitlines():
         method = None
         for token in re.findall(r"`([^`]+)`", line):
-            match = re.match(r"(GET|POST|PUT|DELETE) (/[^\s?]*)", token)
+            match = re.match(r"(GET|POST|PUT|PATCH|DELETE) (/[^\s?]*)", token)
             if match:
                 method = match.group(1)
                 found.add((method, normal_path(match.group(2))))
@@ -101,8 +101,8 @@ def test_every_route_is_classified_into_a_block_or_exempt():
     )
 
 
-def test_every_documented_route_exists():
-    """docs/contracts.md must not promise a route the app doesn't serve."""
+def test_the_docs_and_the_app_list_the_same_routes():
+    """docs/contracts.md must not promise a route the app doesn't serve, nor leave one out."""
     if not DOCS.is_file():
         pytest.skip("docs/ isn't available here, for example in the API container")
     served = {(route.method, normal_path(route.path)) for route in ROUTES}
@@ -111,6 +111,10 @@ def test_every_documented_route_exists():
     missing = sorted(documented - served - MOCK_ONLY_IN_DOCS)
     assert not missing, (
         f"docs/contracts.md lists routes the app doesn't serve: {missing}"
+    )
+    undocumented = sorted(served - documented)
+    assert not undocumented, (
+        f"These routes are served but not in docs/contracts.md: {undocumented}"
     )
 
 

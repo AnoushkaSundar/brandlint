@@ -112,6 +112,67 @@ Engine, gateway and Replay routes take the engine's review id and follow the con
 
 The Python function `llm.call(purpose, data_class, rule_ids, payload) -> dict` in `app.gateway` is the **only** way to call an LLM. Until the gateway is real, the mock returns canned JSON that matches the requested schema.
 
+## Product routes
+
+The routes the web app calls. Every one of them is inside the signed-in user's workspace: another workspace's id is a 404, never a 403. A test (`api/tests/tenancy/test_world.py`) keeps this document and the app equal, so adding a route means adding a row here.
+
+**Sign-in and workspaces**
+
+| Call | Purpose |
+|---|---|
+| `POST /auth/login {email, password}` → `{access_token, user}` | sign in; sets the session cookie; 403 when the workspace is suspended or expired |
+| `POST /auth/logout` | clears the cookie |
+| `GET /auth/me` → `User` | the signed-in user |
+| `POST /orgs {workspace_name, name, email, password}` → `{access_token, user}` | public signup: a sandbox workspace and its first admin in one transaction; 403 unless `MULTI_TENANT_SIGNUP=true`; 409 if the email has an account; 429 when rate limited |
+| `GET /orgs/current` → `{id, name, kind, expires_at, checklist}` | the caller's own workspace, with what an empty one still needs |
+
+**Content**
+
+| Call | Purpose |
+|---|---|
+| `GET /content` → `[Content]` | content the caller can read (a creator sees their own) |
+| `POST /content` (form: title, channel, source, data_class, text or file) | add a draft; creators only; 429 over a sandbox's content or upload limit |
+| `GET /content/{content_id}` | one piece with its versions, latest review and re-review prompt |
+| `POST /content/{content_id}/versions` | add a version |
+| `POST /content/{content_id}/reviews` | start a review; 409 when the workspace has no approved rules; 429 over a sandbox's review or model-call limit |
+| `GET /content/versions/{version_id}/file` | download the uploaded file |
+
+**Workflow**
+
+| Call | Purpose |
+|---|---|
+| `GET /workflow/queue` | the reviewer's queue |
+| `GET /workflow/audit` | the audit log, a page at a time; manager and admin |
+| `GET /workflow/content/{content_id}/board` | where each finding stands |
+| `GET /workflow/content/{content_id}/history` | every decision and state change |
+| `GET /workflow/content/{content_id}/comments` `POST /workflow/content/{content_id}/comments` | the comment thread |
+| `POST /workflow/content/{content_id}/findings/{finding_id}/decisions` | accept, override, edit or clear a finding |
+| `POST /workflow/content/{content_id}/findings/{finding_id}/fix` | ask for a fix |
+| `POST /workflow/content/{content_id}/transitions` | move the piece to its next state |
+
+**Brand and people (admin)**
+
+| Call | Purpose |
+|---|---|
+| `POST /admin/ingest` | upload guidelines; the ingest agent drafts rules |
+| `GET /admin/rules/drafts` `PUT /admin/rules/{rule_id}/draft` `DELETE /admin/rules/{rule_id}/draft` | review, edit or drop drafted rules |
+| `POST /admin/rules/approve` | approve drafts into a new rulebook version |
+| `POST /admin/facts` `PUT /admin/facts/{fact_id}` | add or change a fact |
+| `POST /admin/facts/{fact_id}/rereview` | ask for the pieces citing a fact to be re-checked |
+| `POST /admin/terms` `PUT /admin/terms/{term_id}` | add or change a term |
+| `POST /admin/assets` `POST /admin/assets/palette` | add an approved asset or colour palette |
+| `GET /admin/users` `POST /admin/users` | the workspace's people; add one with a first password |
+| `PATCH /admin/users/{user_id}` `DELETE /admin/users/{user_id}` | change a role or remove; the last admin can't be demoted or removed |
+| `POST /admin/sample-guidelines` | copy the Tarnhollow guidelines into the caller's workspace |
+| `POST /admin/demo/reset` | wipe and re-seed the demo workspace; 403 for any other |
+| `GET /governance/proposals` | pending rule proposals; admin |
+
+**Health**
+
+| Call | Purpose |
+|---|---|
+| `GET /health` `GET /engine/health` | liveness |
+
 ## Tables
 
 - **Alapan:** `chunks`, `claim_units`, `findings`, `review_cache`, `edges`, `gateway_log`, `token_vault`, `proposals`, `spot_checks`, `eval_runs`
