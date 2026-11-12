@@ -6,10 +6,12 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.auth.defaults import new_id, utc_now
 from app.db import Base
+from app.tenancy.columns import org_column
 
 
 class Rule(Base):
     __tablename__ = "rules"
+    org_id: Mapped[str] = org_column(primary_key=True)
 
     # A change adds a new version and never edits an old one.
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
@@ -26,6 +28,7 @@ class Rule(Base):
 
 class Fact(Base):
     __tablename__ = "facts"
+    org_id: Mapped[str] = org_column(primary_key=True)
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     version: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -39,6 +42,7 @@ class Fact(Base):
 
 class Term(Base):
     __tablename__ = "terms"
+    org_id: Mapped[str] = org_column(primary_key=True)
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     preferred: Mapped[str] = mapped_column(String(255))
@@ -50,6 +54,7 @@ class Term(Base):
 
 class Asset(Base):
     __tablename__ = "assets"
+    org_id: Mapped[str] = org_column(primary_key=True)
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     kind: Mapped[str] = mapped_column(String(16))
@@ -59,6 +64,7 @@ class Asset(Base):
 
 class IngestJob(Base):
     __tablename__ = "ingest_jobs"
+    org_id: Mapped[str] = org_column()
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     file_ref: Mapped[str] = mapped_column(String(512))
@@ -73,6 +79,7 @@ class IngestJob(Base):
 
 class Gap(Base):
     __tablename__ = "gaps"
+    org_id: Mapped[str] = org_column()
 
     # The critic builds ids from finding ids, which are longer than a UUID.
     id: Mapped[str] = mapped_column(String(255), primary_key=True, default=new_id)

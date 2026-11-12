@@ -149,7 +149,7 @@ def build_org(session: Session, tag: str) -> OrgWorld:
             state=state,
             creator_id=creator.id,
         )
-    file_ref = f"{tag}-draft.txt"
+    file_ref = f"{org.id}/{tag}-draft.txt"
     path = storage.stored_path(file_ref)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")

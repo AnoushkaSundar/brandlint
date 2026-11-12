@@ -8,11 +8,11 @@ from collections.abc import Iterable
 from datetime import datetime
 
 from pydantic import BaseModel
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.admin.rulebook import current_rulebook_version
 from app.auth.models import User
+from app.tenancy import scoped
 from app.workflow.models import AuditLog, Review
 
 ACTION = "content:rereview_requested"
@@ -51,7 +51,7 @@ def pending(
 ) -> RereviewOut | None:
     """The newest request made since the piece's latest review started, if any."""
     query = (
-        select(AuditLog)
+        scoped(session, AuditLog)
         .where(
             AuditLog.action == ACTION,
             AuditLog.target_type == "content",

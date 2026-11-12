@@ -7,7 +7,6 @@ patterns, never a ranking of people.
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.admin.models import Gap
@@ -16,6 +15,7 @@ from app.clients import engine as engine_client
 from app.content.access import latest_review
 from app.content.models import Content
 from app.contracts import FindingStatus, Verdict
+from app.tenancy import scoped
 from app.workflow.decisions import finding_progress
 from app.workflow.models import Decision
 
@@ -45,7 +45,7 @@ class _Tally:
 
 
 def _pieces(session: Session, channel: str | None, source: str | None) -> list[Content]:
-    query = select(Content).order_by(Content.created_at)
+    query = scoped(session, Content).order_by(Content.created_at)
     if channel:
         query = query.where(Content.channel == channel)
     if source:
@@ -94,7 +94,7 @@ def _creator_signals(session: Session, creator_of: dict[str, str]) -> list[dict]
     if not creator_of:
         return []
     decided = session.scalars(
-        select(Decision).where(
+        scoped(session, Decision).where(
             Decision.review_id.in_(list(creator_of)),
             Decision.status.in_(
                 [
@@ -116,7 +116,7 @@ def _creator_signals(session: Session, creator_of: dict[str, str]) -> list[dict]
     names = {
         user.id: user.name
         for user in session.scalars(
-            select(User).where(User.id.in_(list(creator_of.values())))
+            scoped(session, User).where(User.id.in_(list(creator_of.values())))
         )
     }
     signals = []
@@ -140,7 +140,7 @@ def signals(
     pieces = _pieces(session, channel, source)
     tally, creator_of = _tally(session, pieces)
     rules = sorted(tally.rules.items(), key=lambda item: (-item[1].findings, item[0]))
-    gaps = session.scalars(select(Gap).order_by(Gap.created_at.desc()).limit(GAP_LIMIT))
+    gaps = session.scalars(scoped(session, Gap).order_by(Gap.created_at.desc()).limit(GAP_LIMIT))
     return {
         "pieces": len(pieces),
         "reviewed": len(creator_of),

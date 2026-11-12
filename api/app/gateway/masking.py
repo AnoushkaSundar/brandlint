@@ -30,6 +30,7 @@ from sqlalchemy.orm import Session
 from app.admin.brand import PROTECTED_CLASSES, list_facts, list_terms
 from app.contracts import DataClass
 from app.gateway.models import TokenVault
+from app.tenancy import bind_org
 
 PRESIDIO_URL = os.getenv("PRESIDIO_ANALYZER_URL", "http://localhost:5002")
 PRESIDIO_TIMEOUT_S = float(os.getenv("PRESIDIO_TIMEOUT_S", "10"))
@@ -48,7 +49,8 @@ _TOKEN = re.compile(r"\[[A-Z]+_\d+\]")
 
 _allocate_lock = threading.Lock()
 _deny_lock = threading.Lock()
-_deny_cache: tuple[float, DenyList] | None = None
+# One deny-list per org, because each org's protected values are its own facts.
+_deny_cache: dict[str, tuple[float, DenyList]] = {}
 
 
 @dataclass(frozen=True)
@@ -67,8 +69,9 @@ class Masked:
 Analyzer = Callable[[str], list[dict[str, Any]]]
 
 
-def _build_deny_list(bind: Engine) -> DenyList:
+def _build_deny_list(bind: Engine, org_id: str) -> DenyList:
     with Session(bind) as session:
+        bind_org(session, org_id)
         facts = list_facts(session)
         terms = list_terms(session)
     values = {
@@ -86,12 +89,15 @@ def _build_deny_list(bind: Engine) -> DenyList:
     return DenyList(tuple(sorted(values, key=len, reverse=True)), frozenset(allowed))
 
 
-def deny_list(bind: Engine) -> DenyList:
-    global _deny_cache
+def deny_list(bind: Engine, org_id: str) -> DenyList:
+    """The protected values and the brand vocabulary of one org, and nobody else's."""
+    key = str(org_id).lower()
     with _deny_lock:
-        if _deny_cache is None or time.monotonic() - _deny_cache[0] > DENY_LIST_TTL_S:
-            _deny_cache = (time.monotonic(), _build_deny_list(bind))
-        return _deny_cache[1]
+        cached = _deny_cache.get(key)
+        if cached is None or time.monotonic() - cached[0] > DENY_LIST_TTL_S:
+            cached = (time.monotonic(), _build_deny_list(bind, org_id))
+            _deny_cache[key] = cached
+        return cached[1]
 
 
 def analyze(text: str) -> list[dict[str, Any]]:
@@ -186,8 +192,9 @@ def mask_messages(
     data_class: DataClass,
     scope: str,
     bind: Engine,
+    org_id: str,
 ) -> Masked:
-    deny = deny_list(bind)
+    deny = deny_list(bind, org_id)
     masked = Masked(messages=[])
     personal = data_class in _PERSONAL_DATA_CLASSES
 

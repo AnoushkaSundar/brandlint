@@ -10,6 +10,7 @@ from app.auth.orgs import inactive_reason
 from app.auth.security import SESSION_COOKIE, decode_token
 from app.contracts import Role
 from app.db import get_session
+from app.tenancy.scoped import bind_org
 
 SessionDep = Annotated[Session, Depends(get_session)]
 
@@ -43,6 +44,9 @@ def current_user(request: Request, session: SessionDep) -> User:
     reason = inactive_reason(session.get(Organization, user.org_id))
     if reason is not None:
         raise HTTPException(status.HTTP_403_FORBIDDEN, reason)
+    # From here on every query in this request is for the user's org, and a new row goes
+    # into it. This is the only place the request's org is set.
+    bind_org(session, user.org_id)
     return user
 
 

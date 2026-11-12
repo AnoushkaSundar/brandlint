@@ -444,7 +444,7 @@ def test_an_empty_suggestion_counts_as_a_fix_and_reaches_the_text(client_for, mo
     content_id = resolving(creator)
     monkeypatch.setattr(
         "app.clients.engine.request_fix",
-        lambda finding_id, attempt: FixSuggestion(
+        lambda finding_id, attempt, **kwargs: FixSuggestion(
             finding_id=finding_id, original="x", suggested="", diff="", attempt=attempt
         ),
     )

@@ -21,6 +21,7 @@ from app.contracts import Chunk, Proposal, Role
 from app.db import get_sessionmaker
 from app.engine import evaluation, graph, models, replay, reviews
 from app.engine.access import require_review
+from app.tenancy import bound_org, org_sessions
 
 POLL_S = 0.05
 
@@ -83,7 +84,9 @@ def _review_routes() -> APIRouter:
         if finding is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Finding not found")
         require_review(finding.review_id, user, session)
-        classify = graph.gateway_classify(get_sessionmaker())
+        classify = graph.gateway_classify(
+            org_sessions(get_sessionmaker(), bound_org(session))
+        )
         try:
             result = replay.replay(finding_id, session, classify)
         except replay.NotReplayable as exc:
@@ -97,7 +100,9 @@ def _review_routes() -> APIRouter:
         rule = next((r for r in rulebook_at(session) if r.id == proposal.rule_id), None)
         if rule is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Rule not found")
-        classify = graph.gateway_classify(get_sessionmaker())
+        classify = graph.gateway_classify(
+            org_sessions(get_sessionmaker(), bound_org(session))
+        )
         return evaluation.gate(proposal, rule, session, classify, model=graph.PINNED_MODEL)
 
     return routes

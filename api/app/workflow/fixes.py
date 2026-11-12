@@ -5,13 +5,13 @@ from collections.abc import Iterable, Mapping, Sequence
 from typing import Protocol
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.auth.models import User
 from app.clients import engine as engine_client
 from app.content.models import Content, ContentVersion
 from app.contracts import Chunk, Finding, FixSuggestion, Span
+from app.tenancy import bound_org, scoped
 from app.workflow.models import FixOffer, Review
 
 MAX_FIX_ATTEMPTS = 2
@@ -34,7 +34,7 @@ class FixesOverlap(FixCannotApply):
 def _offers(session: Session, review: Review, finding_id: str) -> list[FixOffer]:
     return list(
         session.scalars(
-            select(FixOffer)
+            scoped(session, FixOffer)
             .where(FixOffer.review_id == review.id, FixOffer.finding_id == finding_id)
             .order_by(FixOffer.attempt)
         )
@@ -69,7 +69,9 @@ def offer_fix(
     if len(offers) >= MAX_FIX_ATTEMPTS:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, NO_SAFE_FIX)
 
-    suggestion = engine_client.request_fix(finding_id, len(offers) + 1)
+    suggestion = engine_client.request_fix(
+        finding_id, len(offers) + 1, org_id=bound_org(session)
+    )
     session.add(
         FixOffer(
             review_id=review.id,
@@ -175,7 +177,7 @@ def save_fixed_version(
     The upload carries over, because fixes can't be written into a DOCX or a PDF.
     """
     latest = session.scalar(
-        select(ContentVersion)
+        scoped(session, ContentVersion)
         .where(ContentVersion.content_id == content.id)
         .order_by(ContentVersion.version.desc())
         .limit(1)

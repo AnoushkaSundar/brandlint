@@ -22,6 +22,7 @@ from app.auth.router import router as auth_router
 from app.auth.security import SESSION_COOKIE, create_token, hash_password
 from app.contracts import CheckType, DataClass, Gap, Role, RuleStatus
 from app.db import Base, get_session
+from app.tenancy import scoped_get
 from app.workflow.models import AuditLog
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -126,18 +127,18 @@ def test_seed_twice_adds_nothing(seeded):
 
 
 def test_seed_keeps_an_admins_edit(seeded):
-    fact = seeded.get(FactRow, ("F-001", 1))
+    fact = scoped_get(seeded, FactRow, ("F-001", 1))
     fact.owner = "Someone who took this over"
     seeded.commit()
 
     seed_brand(seeded)
 
-    assert seeded.get(FactRow, ("F-001", 1)).owner == "Someone who took this over"
+    assert scoped_get(seeded, FactRow, ("F-001", 1)).owner == "Someone who took this over"
 
 
 def test_seed_stores_expiry_dates_as_dates(seeded):
-    assert seeded.get(FactRow, ("F-003", 1)).valid_until == date(2026, 3, 31)
-    assert seeded.get(FactRow, ("F-009", 1)).valid_until is None
+    assert scoped_get(seeded, FactRow, ("F-003", 1)).valid_until == date(2026, 3, 31)
+    assert scoped_get(seeded, FactRow, ("F-009", 1)).valid_until is None
 
 
 # The rulebook
@@ -247,7 +248,7 @@ def test_the_engine_gets_every_fact_including_expired_and_protected(seeded):
 
 
 def test_only_the_newest_version_of_a_fact_is_returned(seeded):
-    old = seeded.get(FactRow, ("F-001", 1))
+    old = scoped_get(seeded, FactRow, ("F-001", 1))
     seeded.add(
         FactRow(
             id="F-001",
@@ -387,8 +388,33 @@ def test_the_gap_id_column_fits_the_longest_engine_id():
     assert len(longest) <= GapRow.__table__.c.id.type.length
 
 
+def add_review(session, engine_review_id="rev-1"):
+    """A review the gap can be logged against."""
+    from app.content.models import Content, ContentVersion
+    from app.workflow.models import Review
+
+    user = session.scalars(select(User)).first()
+    session.add(
+        Content(
+            id="c-gap", title="t", channel="blog", source="s", data_class="public",
+            creator_id=user.id,
+        )
+    )
+    session.flush()
+    session.add(ContentVersion(id="v-gap", content_id="c-gap", version=1, created_by=user.id))
+    session.flush()
+    session.add(
+        Review(
+            id="r-gap", content_version_id="v-gap", engine_review_id=engine_review_id,
+            channel="blog", rulebook_version=1,
+        )
+    )
+    session.commit()
+
+
 def test_an_admin_can_post_gaps_and_they_are_committed(session, client_for):
     client = client_for(Role.admin)
+    add_review(session)
 
     response = client.post("/admin/gaps", json=[make_gap().model_dump(mode="json")])
     session.rollback()
@@ -440,7 +466,7 @@ def test_editing_a_fact_adds_a_version_and_keeps_the_old_one(
     assert response.status_code == 200
     assert response.json()["fact"]["version"] == 2
     assert response.json()["impact"] == []
-    assert seeded.get(FactRow, ("F-002", 1)).value != "41%"
+    assert scoped_get(seeded, FactRow, ("F-002", 1)).value != "41%"
     assert {fact.id: fact for fact in list_facts(seeded)}["F-002"].value == "41%"
 
 

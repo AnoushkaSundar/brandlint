@@ -18,6 +18,7 @@ from app.engine import reviews
 from app.engine.models import Finding
 from app.gateway import masking, policy
 from app.gateway.models import GatewayLog, TokenVault
+from app.tenancy import resolve_org
 
 
 def _masked_chunks(review_id: str, session: Session) -> list[tuple[str, str]]:
@@ -32,6 +33,7 @@ def _masked_chunks(review_id: str, session: Session) -> list[tuple[str, str]]:
             data_class=data_class,
             scope=review_id,
             bind=session.get_bind(),
+            org_id=resolve_org(session),
         )
         pairs.append((chunk.text, masked.messages[0]["content"]))
     return pairs

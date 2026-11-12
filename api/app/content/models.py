@@ -13,10 +13,12 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.auth.defaults import new_id, utc_now
 from app.db import Base
+from app.tenancy.columns import org_column
 
 
 class Content(Base):
     __tablename__ = "content"
+    org_id: Mapped[str] = org_column()
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     title: Mapped[str] = mapped_column(String(255))
@@ -33,6 +35,7 @@ class Content(Base):
 
 class ContentVersion(Base):
     __tablename__ = "content_versions"
+    org_id: Mapped[str] = org_column()
     __table_args__ = (UniqueConstraint("content_id", "version"),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
