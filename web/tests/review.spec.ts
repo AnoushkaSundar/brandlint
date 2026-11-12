@@ -631,7 +631,7 @@ test.describe("finding cards", () => {
       "The product is Tarnhollow Landing.",
     );
     await expect(found.locator("figcaption")).toHaveText(
-      "R-TERM-02 §3.2, version 1",
+      "Rule it breaks · R-TERM-02 §3.2, version 1",
     );
   });
 
@@ -645,7 +645,7 @@ test.describe("finding cards", () => {
     const found = card(page, "retired name");
     await expect(found.locator("blockquote")).toBeVisible();
     await expect(found.locator("figcaption")).toHaveText(
-      "R-TERM-02, version 1",
+      "Rule it breaks · R-TERM-02, version 1",
     );
   });
 
@@ -714,7 +714,7 @@ test.describe("finding cards", () => {
 
     const found = card(page, "retired name");
     await expect(found).toContainText("Earlier decision, context only");
-    await expect(found).toContainText("Lena Fischer, 2026-10-12");
+    await expect(found).toContainText("Lena Fischer, 12 Oct 2026");
   });
 
   test("leave precedents out when there are none or the lookup fails", async ({
@@ -795,7 +795,7 @@ test.describe("finding cards", () => {
     const found = card(page, "hidden from the reader");
     await expect(found.locator("blockquote")).toContainText("must not hide");
     await expect(found.locator("figcaption")).toHaveText(
-      "BrandLint security rule",
+      "Rule it breaks · BrandLint security rule",
     );
   });
 

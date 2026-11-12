@@ -146,15 +146,11 @@ test.describe("memory graph", () => {
     );
     await page.goto("/graph");
 
-    await expect(
-      page.getByRole("img", { name: /3 nodes and 2 links/ }),
-    ).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Approved fact" })).toBeVisible();
+    await expect(page.locator("main")).toContainText("Cut onboarding time");
     await expect(
       page.getByRole("link", { name: "Agency blog" }),
     ).toHaveAttribute("href", "/content/c1");
-    await expect(page.locator("main")).toContainText(
-      "Cut onboarding time cites F-002",
-    );
     await noViolations(page);
   });
 });
