@@ -43,7 +43,15 @@ BLOCK_BY_PREFIX = {
     "/gateway": 4,
     "/governance": 4,
     "/memory": 4,
+    # Following a piece live is allowed by the same read rule as the piece itself, so it
+    # is isolated when the content tables are (Block 3).
+    "/collab": 3,
 }
+
+# Routes that never end. Starlette's TestClient waits for the app to finish, so calling
+# one would hang the suite. The real path runs, with its authorization and its status, and
+# only the endless body is replaced by a single frame.
+STREAMING = {"/collab/content/{content_id}/events": "app.collab.router.follow"}
 
 
 # These routers decide at import time whether to mount the real service or its mock.
@@ -308,5 +316,14 @@ def call(client: TestClient, spec: dict, route: Route, ids: dict, text: str = "x
     request = build_request(spec, route, ids, text)
     uses_ids = request.pop("_uses_ids")
     url = request.pop("url")
-    response = client.request(route.method, url, **request)
+    if route.path in STREAMING:
+        with pytest.MonkeyPatch.context() as patch:
+            patch.setattr(STREAMING[route.path], _one_frame)
+            response = client.request(route.method, url, **request)
+    else:
+        response = client.request(route.method, url, **request)
     return response, uses_ids
+
+
+async def _one_frame(*args, **kwargs):
+    yield "retry: 3000\n\n"

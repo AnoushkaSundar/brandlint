@@ -12,6 +12,7 @@ import json
 from collections.abc import AsyncIterator
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import StreamingResponse
 
 from app.admin.rulebook import rulebook_at
@@ -73,7 +74,11 @@ def _review_routes() -> APIRouter:
         require_review(review_id, user, session)
         run = reviews.get_run(review_id)
         if run is None:
-            raise HTTPException(status.HTTP_404_NOT_FOUND, "Review not found")
+            # A review finished before this process started: its chunks are stored.
+            stored = await run_in_threadpool(reviews.list_chunks, review_id, session)
+            if not stored:
+                raise HTTPException(status.HTTP_404_NOT_FOUND, "Review not found")
+            return [chunk.model_dump(mode="json") for chunk in stored]
         while run.chunks is None and not run.finished.is_set():
             await asyncio.sleep(POLL_S)
         return [chunk.as_dict() for chunk in run.chunks or []]

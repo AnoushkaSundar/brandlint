@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { CommentThread } from "@/components/comment-thread";
 import { FindingCard } from "@/components/finding-card";
+import { LiveReview } from "@/components/live-review";
 import { ReviewDocument } from "@/components/review-document";
 import { SeverityBadge } from "@/components/severity-badge";
 import { WorkflowBar } from "@/components/workflow-bar";
@@ -463,6 +464,22 @@ export function ReviewScreen({ id }: { id: string }) {
     takeBoard(await moveContent(id, to, reason));
   }
 
+  // Someone else changed this piece. Reload what they changed, so no decision is made
+  // on a stale screen. The server still checks every decision either way.
+  function reloadFor(kind: "board" | "comments") {
+    if (kind === "comments") {
+      getComments(id).then(setComments, () => {});
+      return;
+    }
+    const ticket = boardTicket.current;
+    getBoard(id).then(
+      (loaded) => {
+        if (ticket === boardTicket.current) setBoard(loaded);
+      },
+      () => {},
+    );
+  }
+
   const backLink = (
     <Link
       href={`/content/${id}`}
@@ -531,6 +548,8 @@ export function ReviewScreen({ id }: { id: string }) {
           {error}
         </p>
       )}
+
+      <LiveReview contentId={id} selectedId={selectedId} onRemoteChange={reloadFor} />
 
       {board && (
         <WorkflowBar board={board} onMove={move} onRestart={restart} />

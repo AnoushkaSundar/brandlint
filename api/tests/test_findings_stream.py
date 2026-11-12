@@ -405,6 +405,17 @@ def test_a_finished_review_survives_a_restart(session_factory, monkeypatch):
     assert "event: done" in restored
 
 
+def test_a_finished_reviews_chunks_survive_a_restart(session_factory, monkeypatch):
+    """The draft pane went blank after every restart, because only the live run was read."""
+    client = client_for(session_factory, monkeypatch)
+    review_id = start(session_factory)
+    finished_run(review_id)
+    live = client.get(f"/engine/reviews/{review_id}/chunks").json()
+    reviews._runs.pop(review_id)
+    restored = client.get(f"/engine/reviews/{review_id}/chunks").json()
+    assert restored == live and restored[0]["id"] == "cv1:0"
+
+
 def test_unknown_review_is_404(session_factory, monkeypatch):
     client = client_for(session_factory, monkeypatch)
     assert client.get("/engine/reviews/nope/findings").status_code == 404

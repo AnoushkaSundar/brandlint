@@ -90,6 +90,9 @@ Alapan provides these. Anoushka mocks them under `api/mocks/` until they're buil
 | `GET /memory/impact?fact_id=` → `[{content_id, state, claim_text}]` | impact analysis; staff only |
 | `GET /memory/precedents?finding_id=` → `[Precedent]` | precedents |
 | `GET /memory/graph?root=` → `{nodes, edges}` | graph view, read from the Postgres edge table; staff only |
+| `GET /collab/content/{id}/events` (SSE) | live review: decisions, state changes, comments, who is here, and clashes. See `docs/collab.md` |
+| `GET /collab/content/{id}/presence` → `{viewers, contested}` | who is on a piece now |
+| `POST /collab/content/{id}/presence {finding_id}` → `{viewers, contested}` | which finding the caller is looking at |
 | `GET /gateway/reviews/{id}/disclosure` → `{models: [], masked: {entity: count}, routes: []}` | disclosure panel |
 | `GET /gateway/reviews/{id}/masking-preview` → `{original, sent}` | masking preview |
 | `POST /governance/run` → `[Proposal]` | run the governance agent and return every pending proposal; admin only |
