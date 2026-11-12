@@ -10,6 +10,7 @@ from app.auth.orgs import DEMO_ORG_ID, ensure_demo_org
 from app.auth.seed import seed_users
 from app.content.models import Content, ContentVersion
 from app.tenancy import bind_org, scoped
+
 from tests.tenancy.state import problems, snapshot
 from tests.tenancy.world import Org, _person, make_org
 
