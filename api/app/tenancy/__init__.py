@@ -9,6 +9,7 @@ See "Querying tenant data" in CLAUDE.md.
 """
 
 from app.tenancy import autofill as autofill
+from app.tenancy import rls as rls
 from app.tenancy.errors import NoOrg, NotTenantModel, OrgMismatch, TenancyError
 from app.tenancy.scoped import (
     ScopedSelect,
