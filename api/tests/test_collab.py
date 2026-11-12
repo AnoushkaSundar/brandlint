@@ -32,6 +32,12 @@ ORG = "00000000-0000-4000-8000-0000000000c1"
 
 
 @pytest.fixture(autouse=True)
+def no_bus(monkeypatch):
+    # These tests are about one hub. The bus has its own tests, with a database.
+    monkeypatch.setattr("app.collab.bus.ensure_started", lambda target=None: None)
+
+
+@pytest.fixture(autouse=True)
 def signing_secret(monkeypatch):
     # Sessions are signed tokens; the app refuses to run without a secret.
     monkeypatch.setenv("JWT_SECRET", "a-test-only-secret-that-is-long-enough-for-hs256")
