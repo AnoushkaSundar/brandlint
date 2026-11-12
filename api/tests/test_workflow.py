@@ -6,6 +6,7 @@ UI hiding a button proves nothing.
 
 import app.admin.models  # noqa: F401
 import pytest
+from app.admin.seed import seed_brand
 from app.auth.models import User
 from app.auth.router import router as auth_router
 from app.auth.security import SESSION_COOKIE, create_token, hash_password
@@ -65,6 +66,8 @@ def session():
     )
     Base.metadata.create_all(engine)
     with sessionmaker(engine, expire_on_commit=False)() as db:
+        # A review needs approved rules, as in any real workspace.
+        seed_brand(db)
         yield db
 
 

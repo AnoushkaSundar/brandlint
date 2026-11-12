@@ -5,7 +5,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.admin.rulebook import current_rulebook_version
+from app.admin.rulebook import RulebookNotFound, current_rulebook_version, rulebook_at
 from app.auth.dependencies import CurrentUser, SessionDep, require_roles
 from app.auth.models import User
 from app.clients import engine as engine_client
@@ -271,6 +271,15 @@ def start_review(content_id: str, user: Creator, session: SessionDep) -> Review:
                 else ("This review has already finished.")
             )
             raise HTTPException(status.HTTP_409_CONFLICT, message)
+    # A review against no rules would pass everything, so say what is missing instead.
+    try:
+        rulebook_at(session)
+    except RulebookNotFound:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "This workspace has no approved rules yet. Ask an admin to upload the brand "
+            "guidelines and approve the rules, then review again.",
+        ) from None
     source = _content_source(content, latest)
     rulebook_version = current_rulebook_version(session)
     review = Review(

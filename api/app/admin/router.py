@@ -11,7 +11,7 @@ from fastapi import (
     status,
 )
 
-from app.admin import edits, ingest
+from app.admin import demo, edits, ingest
 from app.admin.brand import list_assets, list_facts, list_terms, visible_facts
 from app.admin.gaps import save_gaps
 from app.admin.rulebook import RulebookNotFound, rulebook_at
@@ -73,6 +73,39 @@ def post_gaps(gaps: list[Gap], session: SessionDep) -> dict[str, int]:
     saved = save_gaps(session, gaps)
     session.commit()
     return {"saved": saved}
+
+
+@router.post("/demo/reset")
+def reset_demo_workspace(user: Admin, session: SessionDep) -> dict[str, dict[str, int]]:
+    """Wipes the demo workspace's data and loads the demo brand again. The demo org only."""
+    try:
+        added = demo.reset_demo(session)
+    except demo.NotTheDemoOrg:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, "Only the demo workspace can be reset."
+        ) from None
+    edits._audit(session, user, "demo_reset", "organization", user.org_id, None, added)
+    session.commit()
+    return {"added": added}
+
+
+@router.post("/sample-guidelines")
+def load_sample_guidelines(
+    user: Admin, session: SessionDep
+) -> dict[str, dict[str, int]]:
+    """Copies the Tarnhollow guidelines into this workspace as a starting point."""
+    added = demo.load_sample_guidelines(session)
+    edits._audit(
+        session,
+        user,
+        "sample_guidelines_loaded",
+        "organization",
+        user.org_id,
+        None,
+        added,
+    )
+    session.commit()
+    return {"added": added}
 
 
 @router.post("/facts", response_model=Fact, status_code=status.HTTP_201_CREATED)

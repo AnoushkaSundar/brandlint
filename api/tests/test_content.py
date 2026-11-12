@@ -6,6 +6,7 @@ import app.admin.models
 import app.content.models
 import app.workflow.models  # noqa: F401
 import pytest
+from app.admin.seed import seed_brand
 from app.auth.models import User
 from app.auth.orgs import DEMO_ORG_ID
 from app.auth.router import router as auth_router
@@ -51,6 +52,8 @@ def session():
     )
     Base.metadata.create_all(engine)
     with sessionmaker(engine, expire_on_commit=False)() as db:
+        # A review needs approved rules, as in any real workspace.
+        seed_brand(db)
         yield db
 
 

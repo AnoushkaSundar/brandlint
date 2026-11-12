@@ -27,7 +27,9 @@ METHODS = ("get", "post", "put", "patch", "delete")
 PATH_PARAM = re.compile(r"{([^}]+)}")
 
 # Not tenant data: liveness checks and sign in.
-EXEMPT_PATHS = frozenset({"/health", "/engine/health"})
+# The demo reset is refused for every org but the demo (test_demo_reset.py), so no person
+# in org B can reach it to be tested here.
+EXEMPT_PATHS = frozenset({"/health", "/engine/health", "/admin/demo/reset"})
 EXEMPT_PREFIXES = ("/auth",)
 # The block that makes each router org-aware (docs/multitenancy.md).
 BLOCK_BY_PREFIX = {
