@@ -1,7 +1,14 @@
 """The reviewer queue, comments, history and the audit log."""
 
-import app.admin.models  # noqa: F401
 import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
+
+import app.admin.models  # noqa: F401
+from app.admin.seed import seed_brand
 from app.auth.models import User
 from app.auth.router import router as auth_router
 from app.auth.security import SESSION_COOKIE, create_token, hash_password
@@ -10,11 +17,6 @@ from app.content.router import router as content_router
 from app.contracts import Role
 from app.db import Base, get_session
 from app.workflow.router import router as workflow_router
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
 
 LOW = "fnd-agency-blog-03"
 MEDIUM = "fnd-agency-blog-02"
@@ -39,6 +41,8 @@ def session():
     )
     Base.metadata.create_all(engine)
     with sessionmaker(engine, expire_on_commit=False)() as db:
+        # A review needs approved rules, as in any real workspace.
+        seed_brand(db)
         yield db
 
 

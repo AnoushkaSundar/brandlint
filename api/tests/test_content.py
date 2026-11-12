@@ -2,10 +2,17 @@
 because the UI hiding a button proves nothing.
 """
 
+import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine, select
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
+
 import app.admin.models
 import app.content.models
 import app.workflow.models  # noqa: F401
-import pytest
+from app.admin.seed import seed_brand
 from app.auth.models import User
 from app.auth.orgs import DEMO_ORG_ID
 from app.auth.router import router as auth_router
@@ -16,11 +23,6 @@ from app.content.router import router as content_router
 from app.contracts import Role
 from app.db import Base, get_session
 from app.workflow.models import AuditLog, Review, ReviewStateLog
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, select
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
 
 PDF = b"%PDF-1.7 demo"
 PNG = b"\x89PNG\r\n\x1a\n demo"
@@ -51,6 +53,8 @@ def session():
     )
     Base.metadata.create_all(engine)
     with sessionmaker(engine, expire_on_commit=False)() as db:
+        # A review needs approved rules, as in any real workspace.
+        seed_brand(db)
         yield db
 
 
