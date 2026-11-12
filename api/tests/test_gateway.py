@@ -4,6 +4,7 @@ monkeypatched so no live LiteLLM is needed."""
 from __future__ import annotations
 
 import pytest
+from app.auth.models import Organization
 from app.contracts import DataClass
 from app.db import Base
 from app.gateway import llm, masking, policy
@@ -22,7 +23,9 @@ def empty_deny_list(monkeypatch):
 def session() -> Session:
     # In-memory DB with just the gateway tables created from the shared Base.
     engine = create_engine("sqlite://")
-    Base.metadata.create_all(engine, tables=[GatewayLog.__table__])
+    Base.metadata.create_all(
+        engine, tables=[GatewayLog.__table__, Organization.__table__]
+    )
     with Session(engine) as s:
         yield s
 

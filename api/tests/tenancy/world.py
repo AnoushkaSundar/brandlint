@@ -491,6 +491,7 @@ def build_org(session: Session, tag: str) -> OrgWorld:
         "review_id": eng1,
         "finding_id": f1,
         "fact_id": fact,
+        "user_id": creator.id,
         "root": fact,
         "rule_id": draft,
         "approved_rule_id": rule,

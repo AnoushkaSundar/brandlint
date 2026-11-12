@@ -22,12 +22,20 @@ from typing import Any
 import httpx
 
 from app.contracts import DataClass
-from app.gateway import masking, policy
+from app.gateway import budget, masking, policy
+from app.gateway.budget import BudgetExceeded
 from app.gateway.models import GatewayLog
 from app.gateway.policy import PINNED_MODEL, POLICY_VERSION
 from app.tenancy import resolve_org
 
-__all__ = ["PINNED_MODEL", "POLICY_VERSION", "LeakBlocked", "PolicyBlocked", "call"]
+__all__ = [
+    "PINNED_MODEL",
+    "POLICY_VERSION",
+    "BudgetExceeded",
+    "LeakBlocked",
+    "PolicyBlocked",
+    "call",
+]
 
 LITELLM_URL = os.getenv("LITELLM_URL", "http://localhost:4000")
 LITELLM_KEY = os.getenv("LITELLM_MASTER_KEY", "")
@@ -124,6 +132,7 @@ def call(
         if route == "blocked":
             raise PolicyBlocked(f"{dc.value} data may not be used for {purpose}")
         if route == "litellm":
+            budget.check(session)
             masked = masking.mask_messages(
                 payload["messages"],
                 data_class=dc,
@@ -151,7 +160,7 @@ def call(
                 raise LeakBlocked(problem)
         parsed = _parse_output(content)
         return masking.unmask(parsed, masked.tokens) if masked else parsed
-    except (PolicyBlocked, LeakBlocked) as exc:
+    except (PolicyBlocked, LeakBlocked, BudgetExceeded) as exc:
         status = "blocked"
         error = f"{type(exc).__name__}: {exc}"
         raise

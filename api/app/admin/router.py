@@ -11,12 +11,13 @@ from fastapi import (
     status,
 )
 
-from app.admin import demo, edits, ingest
+from app.admin import demo, edits, ingest, users
 from app.admin.brand import list_assets, list_facts, list_terms, visible_facts
 from app.admin.gaps import save_gaps
 from app.admin.rulebook import RulebookNotFound, rulebook_at
 from app.auth.dependencies import CurrentUser, SessionDep, current_user, require_roles
 from app.auth.models import User
+from app.auth.schemas import UserOut
 from app.content import rereview
 from app.contracts import Asset, AssetKind, Fact, Gap, Role, Rule, Term
 from app.memory import queries as memory
@@ -73,6 +74,43 @@ def post_gaps(gaps: list[Gap], session: SessionDep) -> dict[str, int]:
     saved = save_gaps(session, gaps)
     session.commit()
     return {"saved": saved}
+
+
+@router.get(
+    "/users",
+    response_model=list[UserOut],
+    dependencies=[Depends(require_roles(Role.admin))],
+)
+def get_users(session: SessionDep) -> list[User]:
+    return users.list_users(session)
+
+
+@router.post(
+    "/users",
+    response_model=UserOut,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_roles(Role.admin))],
+)
+def post_user(body: users.UserIn, session: SessionDep) -> User:
+    return users.add_user(session, body)
+
+
+@router.patch(
+    "/users/{user_id}",
+    response_model=UserOut,
+    dependencies=[Depends(require_roles(Role.admin))],
+)
+def patch_user(user_id: str, body: users.RoleIn, session: SessionDep) -> User:
+    return users.change_role(session, user_id, body.role)
+
+
+@router.delete(
+    "/users/{user_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_roles(Role.admin))],
+)
+def delete_user(user_id: str, session: SessionDep) -> None:
+    users.remove_user(session, user_id)
 
 
 @router.post("/demo/reset")
