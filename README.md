@@ -80,7 +80,14 @@ This needs a capable server: on a laptop CPU, one call took two minutes or more.
 docker compose exec api pytest                              # backend tests
 docker compose exec api python -m app.engine.evaluation     # eval set, calls the real model
 cd web && npx playwright test                               # end-to-end tests
+docker compose exec api pytest tests/tenancy                # isolation suite: two orgs, every route
+RLS_TEST_DATABASE_URL=postgresql+psycopg://brandlint:brandlint@db:5432/postgres   docker compose exec api pytest tests/test_rls.py          # Row-Level Security on a real Postgres
+python demo/check_workspaces.py                             # two workspaces on a running stack
 ```
+
+## Workspaces
+
+Each organisation is its own workspace, in one shared database: every tenant row carries an `org_id`, the app scopes every query by it (`app/tenancy`), and Postgres Row-Level Security refuses another org's rows even if a query forgets its filter ([`docs/rls.md`](docs/rls.md)). Tarnhollow is the demo workspace. With `MULTI_TENANT_SIGNUP=true`, a visitor can create a sandbox workspace of their own: it starts empty, has limits on people, content, uploads, reviews and model calls, and is deleted after a week by `python -m app.tenancy.expiry`. The design is in [`docs/multitenancy.md`](docs/multitenancy.md), and rolling it out is in [`deploy/README.md`](deploy/README.md).
 
 ## How a review works
 

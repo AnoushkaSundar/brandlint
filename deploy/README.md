@@ -44,6 +44,23 @@ The preload ingests and approves the guideline, adds the override history, and r
 
 Open `https://<SITE_HOST>/login` and choose **Continue as Creator**. Open the **Demo guide** at the top right, and follow a few steps.
 
+## Opening it to judges: own workspaces
+
+Judges can create their own empty workspace, separate from the Tarnhollow demo. A workspace is a `sandbox` that lasts 7 days, with limits on people, content, uploads, reviews and model calls (`.env.example` lists them). Run these in order, and stop at the first step that fails.
+
+1. **Back up the database**, and keep the file until the release is proven:
+   `$C exec -T db pg_dump -U brandlint -Fc brandlint > backup-$(date +%F).dump`
+2. **Test the restore once**, on a scratch database, so you know the backup works:
+   `$C exec -T db createdb -U brandlint restore_test && $C exec -T db pg_restore -U brandlint -d restore_test --no-owner < backup-<date>.dump && $C exec -T db psql -U brandlint -d restore_test -c "select count(*) from users" && $C exec -T db dropdb -U brandlint restore_test`
+3. **Migrate**, as the owner and before the new API starts: `$C run --rm --no-deps api alembic upgrade head`, then `$C up -d --build`. Check the API is connected as `brandlint_app` (see `docs/rls.md`).
+4. **Smoke test the demo**: sign in with **Continue as Admin**, open each page, and run `demo/check_demo.py`. It uses the real model.
+5. **Turn signup on**: put `MULTI_TENANT_SIGNUP=true` in `.env` and rebuild the web image, because the sign-up form is fixed at build time: `$C up -d --build web api`. The login page now shows **Create your own workspace**.
+6. **Smoke test signup**: `API=https://<SITE_HOST>/api python demo/check_workspaces.py`. It makes two workspaces, checks that neither sees the other, and costs nothing. Both workspaces delete themselves in a week.
+7. **Delete expired workspaces** on a schedule. Run it once by hand first, then add it to cron:
+   `$C exec -T api python -m app.tenancy.expiry` (for example `17 * * * *` for hourly). It deletes each expired sandbox's rows and uploaded files, and never touches the demo.
+
+**Roll back** if step 4 or 6 fails: set `MULTI_TENANT_SIGNUP=false` and rebuild web and api (the form disappears and the API answers 403 to signups). Nothing else needs undoing, because the demo is unaffected. To go back before the organisation migrations, stop the API, restore the dump from step 1 into a fresh database (`pg_restore -d brandlint --clean --if-exists`), and deploy the previous release.
+
 ## Reset
 
 To clear what judges changed, delete the database volume, then rerun the four setup commands:

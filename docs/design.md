@@ -139,6 +139,12 @@ any → rejected (with reason)
 - **Spot-checks:** 5% of passed content is sampled for a reviewer, which is our only source of missed-issue labels.
 - **Active learning:** UNSURE and split-vote items are routed to reviewers first.
 
+## Workspaces
+
+One database, many organisations. Every table that belongs to an org has an `org_id`, and `organizations` is the only shared table. The org comes only from the signed-in user's database row, never from the request. Queries go through `app.tenancy` (`scoped`, `scoped_get` and the rest), a CI check fails when one doesn't, and Postgres Row-Level Security is a second lock behind it: each transaction is told its org, and the policy on every tenant table returns nothing from another. The verdict cache key includes the org, so two orgs never share an answer; rulebook and fact versions are numbered per org. Another org's id is a 404, never a 403, so an id can't be used to find out whether it exists. Why each choice: [`multitenancy.md`](multitenancy.md) and [`rls.md`](rls.md).
+
+A visitor's sandbox workspace is limited (people, content, uploads, reviews, model calls) and expires; an expired one is deleted with its data and files by the expiry job, which binds each org in turn instead of needing a role that bypasses RLS.
+
 ## Operational rules
 
 - English only for now; non-English content goes to a person with a notice.
