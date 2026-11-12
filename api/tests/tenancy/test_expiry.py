@@ -50,6 +50,7 @@ def test_a_standalone_script_sees_every_tenant_table():
     """The expiry job runs on its own. In a fresh process it must still know every table."""
     import subprocess
     import sys
+    from pathlib import Path
 
     from tests.tenancy.inventory import TENANT_TABLES
 
@@ -58,6 +59,11 @@ def test_a_standalone_script_sees_every_tenant_table():
         "print(sorted(m.__tablename__ for m in tenant_models()))"
     )
     out = subprocess.run(
-        [sys.executable, "-c", code], capture_output=True, text=True, check=True
+        [sys.executable, "-c", code],
+        capture_output=True,
+        text=True,
+        check=True,
+        # The API's own folder, which is where the app is imported from.
+        cwd=Path(__file__).resolve().parents[2],
     ).stdout
     assert sorted(eval(out.strip().splitlines()[-1])) == sorted(TENANT_TABLES)
