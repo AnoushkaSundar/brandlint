@@ -36,6 +36,7 @@ def current_user(request: Request, session: SessionDep) -> User:
 
     # The stored role and org win over the token, so a role change takes effect at
     # once and a token can't name a workspace it wasn't issued for.
+    # unscoped-ok: the user is looked up by id to find out which org the request is for
     user = session.get(User, claims["sub"])
     if user is None:
         raise _unauthenticated()
