@@ -66,7 +66,7 @@ class FakeGitHub:
         ALLOWED_PORTS.add(self._server.server_address[1])
         return self
 
-    def __exit__(self, *exc: Any) -> None:
+    def __exit__(self, *exc: object) -> None:
         if self._server:
             ALLOWED_PORTS.discard(self._server.server_address[1])
             self._server.shutdown()
