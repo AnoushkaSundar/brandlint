@@ -14,6 +14,7 @@ from app.auth.models import User
 from app.auth.schemas import UserOut
 from app.auth.security import hash_password
 from app.auth.workspaces.router import EMAIL
+from app.ci.runs import not_a_ci_person
 from app.contracts import Role
 from app.tenancy import limits, scoped, scoped_get
 from app.tenancy.rls import auth_lookup
@@ -34,7 +35,11 @@ class RoleIn(BaseModel):
 
 
 def list_users(session: Session) -> list[User]:
-    return list(session.scalars(scoped(session, User).order_by(User.name, User.email)))
+    return list(
+        session.scalars(
+            scoped(session, User).where(not_a_ci_person()).order_by(User.name, User.email)
+        )
+    )
 
 
 def _person(session: Session, user_id: str) -> User:

@@ -10,6 +10,7 @@ from alembic.config import Config
 from alembic.migration import MigrationContext
 from app.auth.models import Organization, User
 from app.auth.orgs import DEMO_ORG_ID
+from app.ci import models as _ci_models  # noqa: F401  registers the CI tables
 from app.db import Base
 from sqlalchemy import create_engine, insert, inspect, select, text
 from sqlalchemy.exc import IntegrityError
@@ -57,6 +58,8 @@ def test_the_migration_matches_the_models(database, alembic_config):
     }
 
     def only_product_tables(obj, name, kind, reflected, compare_to):
+        if name in ("external_ref", "ix_content_external_ref"):
+            return False  # added later, by anoushka_0010
         return kind != "table" or name in product_tables
 
     with database.connect() as connection:
@@ -467,3 +470,26 @@ def test_the_service_tokens_migration_matches_the_model_and_downgrades(database,
     command.upgrade(alembic_config, "anoushka_0009")
     with database.connect() as connection:
         assert "service_tokens" in inspect(connection).get_table_names()
+
+
+def test_the_ci_runs_migration_matches_the_models_and_downgrades(database, alembic_config):
+    command.upgrade(alembic_config, "anoushka_0010")
+    wanted = {"ci_runs", "ci_run_files", "content"}
+
+    def only_these(obj, name, kind, reflected, compare_to):
+        return kind != "table" or name in wanted
+
+    with database.connect() as connection:
+        context = MigrationContext.configure(
+            connection, opts={"compare_type": True, "include_object": only_these}
+        )
+        assert compare_metadata(context, Base.metadata) == []
+        columns = {c["name"] for c in inspect(connection).get_columns("content")}
+        assert "external_ref" in columns
+
+    command.downgrade(alembic_config, "anoushka_0009")
+    with database.connect() as connection:
+        tables = set(inspect(connection).get_table_names())
+        assert not {"ci_runs", "ci_run_files"} & tables
+        assert "external_ref" not in {c["name"] for c in inspect(connection).get_columns("content")}
+    command.upgrade(alembic_config, "anoushka_0010")

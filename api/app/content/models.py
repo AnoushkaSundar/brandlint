@@ -27,6 +27,9 @@ class Content(Base):
     source: Mapped[str] = mapped_column(String(255))
     data_class: Mapped[str] = mapped_column(String(32))
     state: Mapped[str] = mapped_column(String(32), default="draft")
+    # Where the copy lives outside BrandLint: for a CI run, "<repo>:<path>", so the same file
+    # across pull requests is one piece with versions.
+    external_ref: Mapped[str | None] = mapped_column(String(512), index=True)
     creator_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now

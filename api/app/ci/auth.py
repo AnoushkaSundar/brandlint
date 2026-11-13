@@ -50,7 +50,10 @@ def hash_token(raw: str) -> str:
 
 def new_token() -> tuple[str, str]:
     """A fresh token and its hash. The token is shown once and never kept."""
-    raw = TOKEN_PREFIX + base64.urlsafe_b64encode(secrets.token_bytes(32)).rstrip(b"=").decode()
+    raw = (
+        TOKEN_PREFIX
+        + base64.urlsafe_b64encode(secrets.token_bytes(32)).rstrip(b"=").decode()
+    )
     return raw, hash_token(raw)
 
 
@@ -83,7 +86,8 @@ def _from_token(raw: str, session: Session) -> Principal:
     digest = hash_token(raw)
     with auth_lookup(session):
         # unscoped-ok: a token is looked up by its hash to find out which org it is for
-        row = session.scalar(select(ServiceToken).where(ServiceToken.token_hash == digest))
+        lookup = select(ServiceToken).where(ServiceToken.token_hash == digest)
+        row = session.scalar(lookup)
     if row is None or not hmac.compare_digest(row.token_hash, digest):
         raise _unauthenticated()
     now = utc_now()

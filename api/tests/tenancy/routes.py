@@ -186,6 +186,14 @@ BODIES: dict[tuple[str, str], Any] = {
             "text": text,
         },
     },
+    ("POST", "/ci/runs"): lambda ids, text: {
+        "json": {
+            "repo": "o/r",
+            "pr": 1,
+            "sha": "abc",
+            "files": [{"path": "copy.md", "channel": "blog", "text": text}],
+        },
+    },
     ("POST", "/content/{content_id}/versions"): lambda ids, text: {
         "form": {"text": text}
     },

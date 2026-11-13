@@ -550,7 +550,7 @@ def test_a_new_rulebook_lets_unchanged_text_be_reviewed_again(
     client.post(f"/content/{content_id}/reviews")
     session.get(Content, content_id).state = "resolving"
     session.commit()
-    monkeypatch.setattr("app.content.router.current_rulebook_version", lambda *args: 2)
+    monkeypatch.setattr("app.content.reviewing.current_rulebook_version", lambda *args: 2)
 
     assert client.post(f"/content/{content_id}/reviews").status_code == 201
 
