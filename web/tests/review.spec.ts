@@ -328,6 +328,25 @@ test.describe("sorting findings", () => {
 });
 
 test.describe("review screen", () => {
+  test("a highlight keeps the spaces around it", async ({ page }) => {
+    // Real reviews often mark " best-in-class " with its edge spaces. Inside a button those
+    // spaces are dropped by the browser, which made "the best-in-class way" read
+    // "thebest-in-classway".
+    const text = "It is the best-in-class way to help people settle in.";
+    const start = text.indexOf(" best-in-class ");
+    const chunk = { ...CHUNKS[0], id: "spaced", kind: "paragraph" as const, text };
+    const finding = {
+      ...FINDINGS[0],
+      spans: [{ chunk_id: "spaced", start, end: start + " best-in-class ".length }],
+    };
+    await stubReview(page, { chunks: [chunk], findings: [finding] });
+    await page.goto("/content/c1/review");
+
+    const paragraph = page.locator("p").filter({ has: highlight(page, "best-in-class") });
+    await expect(paragraph).toBeVisible();
+    expect((await paragraph.innerText()).replace(/\s*\((critical|high|medium|low) finding\)/, "")).toBe(text);
+  });
+
   test("shows the document with its planted issues highlighted", async ({
     page,
   }) => {
