@@ -50,8 +50,21 @@ def alembic_config() -> Config:
 # --- Runs everywhere ---------------------------------------------------------------------
 
 
-def test_the_migration_covers_every_tenant_table_except_users():
-    assert set(migration_module().TENANT_TABLES) == set(TENANT_TABLES) - {"users"}
+def later_rls_tables() -> set[str]:
+    """Tables that migrations after alapan_0006 lock, each naming them in RLS_TABLES."""
+    found: set[str] = set()
+    for path in sorted((API_DIR / "migrations" / "versions").glob("*.py")):
+        spec = importlib.util.spec_from_file_location(path.stem, path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        found |= set(getattr(module, "RLS_TABLES", []))
+    return found
+
+
+def test_the_migrations_cover_every_tenant_table():
+    # alapan_0006 locks all but users, and the migrations after it lock users and the rest.
+    locked = set(migration_module().TENANT_TABLES) | later_rls_tables() | {"users"}
+    assert locked == set(TENANT_TABLES)
 
 
 def test_the_migration_leaves_an_other_database_alone(tmp_path, monkeypatch):
@@ -412,7 +425,7 @@ def test_the_migration_downgrades_and_upgrades_again(monkeypatch):
         command.upgrade(built.config, "head")
         with built.owner.connect() as connection:
             assert connection.execute(text("SELECT count(*) FROM pg_policies")).scalar_one() == len(
-                migration_module().TENANT_TABLES
-            ) + 1  # users, from anoushka_0008
+                TENANT_TABLES
+            )
     finally:
         built.drop()

@@ -442,3 +442,28 @@ def test_the_ai_migration_can_run_again_after_a_downgrade(database, alembic_conf
     command.upgrade(alembic_config, REVISION)
 
     assert rows_in_the_demo_org(database, "findings") == (1, 1)
+
+
+# --- service_tokens (anoushka_0009), for the CI/CD integration ----------------------------------
+
+
+def test_the_service_tokens_migration_matches_the_model_and_downgrades(database, alembic_config):
+    command.upgrade(alembic_config, "anoushka_0009")
+    tables = {"service_tokens": Base.metadata.tables["service_tokens"]}
+
+    def only_tokens(obj, name, kind, reflected, compare_to):
+        return kind != "table" or name in tables
+
+    with database.connect() as connection:
+        context = MigrationContext.configure(
+            connection, opts={"compare_type": True, "include_object": only_tokens}
+        )
+        assert compare_metadata(context, Base.metadata) == []
+        assert "service_tokens" in inspect(connection).get_table_names()
+
+    command.downgrade(alembic_config, "anoushka_0008")
+    with database.connect() as connection:
+        assert "service_tokens" not in inspect(connection).get_table_names()
+    command.upgrade(alembic_config, "anoushka_0009")
+    with database.connect() as connection:
+        assert "service_tokens" in inspect(connection).get_table_names()

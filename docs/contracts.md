@@ -183,6 +183,14 @@ The routes the web app calls. Every one of them is inside the signed-in user's w
 | `POST /admin/demo/reset` | wipe and re-seed the demo workspace; 403 for any other |
 | `GET /governance/proposals` | pending rule proposals; admin |
 
+**CI/CD integration** (off until `CI_INTEGRATION_ENABLED=true`; see `docs/ci-integration.md`)
+
+| Call | Purpose |
+|---|---|
+| `GET /ci/whoami` → `{kind, name, role?}` | who the caller is: a service token or a signed-in person |
+| `GET /ci/tokens` `POST /ci/tokens {name, expires_in_days?}` | an admin lists their workspace's service tokens (prefix only) or creates one, shown once |
+| `DELETE /ci/tokens/{token_id}` | revoke a token; it stops working on the next request |
+
 **Health**
 
 | Call | Purpose |
