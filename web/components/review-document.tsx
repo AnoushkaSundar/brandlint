@@ -34,25 +34,36 @@ function Highlighted({
 }) {
   if (!segment.severity) return segment.text;
 
+  // A button is an inline-block, and an inline-block drops the whitespace at its edges, so
+  // "the best-in-class way" read "thebest-in-classway". Keep the edge spaces outside it.
+  const lead = /^\s*/.exec(segment.text)?.[0] ?? "";
+  const trail = /\s*$/.exec(segment.text.slice(lead.length))?.[0] ?? "";
+  const core = segment.text.slice(lead.length, segment.text.length - trail.length);
+  if (!core) return segment.text;
+
   return (
-    <mark
-      data-finding={segment.findingIds.join(" ")}
-      data-selected={selected || undefined}
-      className={cn(
-        "rounded-sm text-foreground underline decoration-2 underline-offset-2",
-        SEVERITY_MARK[segment.severity],
-        selected && "outline-2 outline-offset-1 outline-ring",
-      )}
-    >
-      <button
-        type="button"
-        onClick={() => onSelect(segment.findingIds[0])}
-        className="inline cursor-pointer text-left underline decoration-inherit"
+    <>
+      {lead}
+      <mark
+        data-finding={segment.findingIds.join(" ")}
+        data-selected={selected || undefined}
+        className={cn(
+          "rounded-sm text-foreground underline decoration-2 underline-offset-2",
+          SEVERITY_MARK[segment.severity],
+          selected && "outline-2 outline-offset-1 outline-ring",
+        )}
       >
-        {segment.text}
-        <span className="sr-only"> ({segment.severity} finding)</span>
-      </button>
-    </mark>
+        <button
+          type="button"
+          onClick={() => onSelect(segment.findingIds[0])}
+          className="inline cursor-pointer text-left underline decoration-inherit"
+        >
+          {core}
+          <span className="sr-only"> ({segment.severity} finding)</span>
+        </button>
+      </mark>
+      {trail}
+    </>
   );
 }
 
