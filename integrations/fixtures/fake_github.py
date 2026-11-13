@@ -84,6 +84,7 @@ class FakeGitHub:
         return self._next_id
 
     def route(self, method: str, path: str, body: Any) -> tuple[int, Any]:
+        path = path.split("?")[0]
         if match := re.fullmatch(r"/repos/[^/]+/[^/]+/issues/(\d+)/comments", path):
             number = int(match.group(1))
             if method == "GET":

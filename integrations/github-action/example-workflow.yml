@@ -1,0 +1,29 @@
+# Add this to your repo as .github/workflows/brandlint.yml.
+#
+# Pin the action by commit SHA, not a tag, so a moved tag cannot change what runs.
+# Blocking the merge is done by GitHub's branch protection: require the "BrandLint" check
+# to pass. The action itself only reports.
+name: BrandLint
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+# A new push replaces the run for the same pull request.
+concurrency:
+  group: brandlint-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  BrandLint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the base commit has to be there, to find what changed
+      - uses: OWNER/brandlint/integrations/github-action@COMMIT_SHA
+        with:
+          server: https://your-brandlint.example/api
+          token: ${{ secrets.BRANDLINT_TOKEN }}
