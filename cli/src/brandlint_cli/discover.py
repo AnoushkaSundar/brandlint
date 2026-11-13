@@ -64,6 +64,9 @@ def discover(
     if paths:
         for given in paths:
             target = Path(given) if os.path.isabs(given) else Path.cwd() / given
+            if not _inside(root, Path(os.path.abspath(target))) and not os.path.isabs(given):
+                # Relative to the repo, as pre-commit hands over names, when --root points elsewhere.
+                target = root / given
             if not _inside(root, Path(os.path.abspath(target))):
                 raise UsageError(f"{given!r} is outside the repo at {root}, so it is not sent.")
             if target.is_dir() and not target.is_symlink():

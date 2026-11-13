@@ -133,6 +133,28 @@ def sarif(statuses, skipped) -> str:
     return json.dumps(document, indent=2) + "\n"
 
 
+def short(statuses, warnings, skipped, result, blocking: bool = False) -> str:
+    """For a commit hook: a line per blocking finding with path:line and its link, and nothing
+    longer than a short span. When BrandLint could not check, one line saying the commit goes on."""
+    if result == "error" and not any(s.get("result") == "fail" for s in statuses):
+        why = warnings[0] if warnings else "BrandLint could not check"
+        if blocking:
+            return f"brandlint: could not check. {why}\n"
+        return f"brandlint: {why} Not blocking this commit (use --strict to block).\n"
+    lines = []
+    for status in statuses:
+        for file in status.get("files", []):
+            for found in file.get("findings", []):
+                if not found.get("blocking"):
+                    continue
+                span = f' "{_short(found["span"], 40)}"' if found.get("span") else ""
+                lines.append(f"{_where(found, file['path'])}: {found['title']}{span} {found['url']}")
+    for path, why in skipped:
+        lines.append(f"{path}: not checked, it {why}")
+    lines.append(f"brandlint: {verdict_word(result).lower()}.")
+    return "\n".join(lines) + "\n"
+
+
 def verdict_word(result: str) -> str:
     return {"pass": "PASSED", "fail": "FAILED", "error": "COULD NOT CHECK"}[result]
 

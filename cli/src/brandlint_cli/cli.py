@@ -35,9 +35,11 @@ def build_parser() -> argparse.ArgumentParser:
     check.add_argument("paths", nargs="*", help="files or folders to check (default: all that the config matches)")
     check.add_argument("--changed-against", metavar="REF", help="only files changed since this git ref")
     check.add_argument("--staged", action="store_true", help="only files staged for commit")
-    check.add_argument("--format", choices=["text", "json", "github", "sarif"], default="text")
+    check.add_argument("--format", choices=["text", "short", "json", "github", "sarif"], default="text")
     check.add_argument("--on-error", choices=["fail", "pass", "warn"], default="fail",
                        help="what to do when BrandLint can not be reached (default: fail)")
+    check.add_argument("--strict", action="store_true",
+                       help="block when BrandLint can not be reached (the same as --on-error fail)")
     check.add_argument("--config", help=f"path to the config (default: {CONFIG_NAME} in the repo root)")
     check.add_argument("--server", help="BrandLint API address (or BRANDLINT_SERVER, or the config)")
     check.add_argument("--root", default=".", help="the repo root (default: the current folder)")
@@ -90,6 +92,8 @@ def run_check(
 ) -> int:
     token = env.get("BRANDLINT_TOKEN", "")
     mask = Masker(token)
+    if args.strict:
+        args.on_error = "fail"
     root = Path(args.root).resolve()
 
     try:
@@ -177,6 +181,8 @@ def run_check(
     output.place_findings(statuses, extractions)
     if args.format == "json":
         text = output.as_json(statuses, warnings, found.skipped, result, code)
+    elif args.format == "short":
+        text = output.short(statuses, warnings, found.skipped, result, blocking=code != 0)
     elif args.format == "github":
         text = output.github(statuses, warnings, found.skipped, result)
     elif args.format == "sarif":
