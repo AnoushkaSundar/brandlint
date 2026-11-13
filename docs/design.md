@@ -136,6 +136,7 @@ any → rejected (with reason)
 - The system changes versioned artifacts (rubric anchor examples, terms, severities, rules), never model weights. Every change is a proposal a person approves.
 - Only reviewer-confirmed signals count.
 - A proposal must pass the eval gate (labelled set, no drop in precision or recall) before an admin sees it.
+- **The gate fails closed outside the demo org.** The labelled examples were written for the Tarnhollow guideline, so any other organisation's rules have none. Its proposals report `passed: false` ("not enough labelled examples"), and an admin decides them by hand. A gap in the set is never a pass.
 - **Spot-checks:** 5% of passed content is sampled for a reviewer, which is our only source of missed-issue labels.
 - **Active learning:** UNSURE and split-vote items are routed to reviewers first.
 
