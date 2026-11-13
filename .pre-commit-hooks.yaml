@@ -1,11 +1,25 @@
-# Pre-commit hook: reviews staged copy files with BrandLint before they're committed.
-# Set BRANDLINT_URL, BRANDLINT_EMAIL and BRANDLINT_PASSWORD in your environment.
-# See docs/ci.md.
+# BrandLint as a pre-commit hook. It checks the copy you are about to commit and, if BrandLint is
+# slow or unreachable, warns and lets the commit through (add --strict to block instead).
+# `git commit --no-verify` skips it, which is why the GitHub Action is the real gate.
+# Needs BRANDLINT_TOKEN in your environment and a .brandlint.yml in the repo. See cli/README.md.
 - id: brandlint
-  name: BrandLint copy review
-  description: Reviews copy files against your approved brand rulebook.
-  entry: scripts/brandlint_ci.py
-  language: script
-  files: '\.(md|txt|html?|docx)$'
+  name: BrandLint copy check
+  description: Checks staged copy files against your approved brand rulebook.
+  entry: brandlint check --staged --on-error warn --timeout 20 --format short
+  language: python
+  types_or: [markdown, text, html, json, yaml]
   pass_filenames: true
   require_serial: true
+  stages: [pre-commit]
+
+# The same check at push time, for teams that find commit time too slow. It checks the files
+# pre-commit says changed in the push, so it doesn't use --staged.
+- id: brandlint-push
+  name: BrandLint copy check (push)
+  description: Checks the copy in the files being pushed against your approved brand rulebook.
+  entry: brandlint check --on-error warn --timeout 20 --format short
+  language: python
+  types_or: [markdown, text, html, json, yaml]
+  pass_filenames: true
+  require_serial: true
+  stages: [pre-push]

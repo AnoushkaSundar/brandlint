@@ -24,3 +24,17 @@ channels:               # no file is checked unless a rule here matches it
 ignore:
   - "docs/drafts/**"
 ```
+
+## As a pre-commit hook
+
+```yaml
+# .pre-commit-config.yaml
+repos:
+  - repo: https://github.com/OWNER/brandlint
+    rev: COMMIT_SHA        # pin by commit
+    hooks:
+      - id: brandlint      # checks staged copy at commit time
+      # - id: brandlint-push   # or at push time, if commit time is too slow
+```
+
+Set `BRANDLINT_TOKEN` in your environment, and have a `.brandlint.yml` in the repo. If BrandLint is slow (20 seconds) or unreachable, the hook prints one line and lets the commit through; add `args: [--strict]` to block instead. A real finding always blocks. `git commit --no-verify` skips the hook, which is why the GitHub Action, not the hook, is the thing that enforces.
