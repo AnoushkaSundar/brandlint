@@ -75,6 +75,22 @@ The CI/CD integration (service tokens, runs, the GitHub Action, the pre-commit h
 
 **Roll back** if step 5 or 6 fails: set `CI_INTEGRATION_ENABLED=false` and rebuild web and api. Every `/ci` route, and the CI part of insights, is a 404 again, nothing else changes, and tokens stop working. To undo the migrations: stop the API, `$C run --rm --no-deps api alembic downgrade anoushka_0008`, and restore `backup-<date>.dump` if you need the old rows back. The downgrade drops every token, CI run and policy.
 
+## Reset the demo between sessions
+
+Judges change the shared demo (they approve the newsletter, accept fixes), and the app has no reset button. On the server, from the repository folder:
+
+```bash
+bash deploy/reset-demo.sh
+```
+
+It backs up the database, resets the Tarnhollow workspace with the app's own admin reset (the demo org only; people and the audit log are kept), reviews the three pieces and the newsletter again with the real model, adds the override history, and lets the governance agent draft its amendment. About a minute, a few cents. Workspaces that visitors made for themselves are not touched.
+
+## Known limits of the live demo
+
+- **Restricted data fails closed.** The local model (Ollama) isn't run on the server, so a `restricted` piece can't be checked by an AI. Code checks still run and flag what they find, and every model-backed check returns UNSURE ("Model check could not run") so a person decides. Nothing goes to the cloud. Checked live: the disclosure lists no models. To show the local route, start Ollama (`--profile local-llm`), which needs about 2 GB more memory.
+- **Sign-in is the slow step under load.** Argon2 hashing uses both cores; 40 people signing in at the same second take about 7 seconds each. A few at a time take 2 to 3 seconds.
+- **Signups are limited to `SIGNUPS_PER_HOUR` per network address** (30 on the live server), so a venue network can't lock itself out.
+
 ## Reset
 
 To clear what judges changed, delete the database volume, then rerun the four setup commands:
