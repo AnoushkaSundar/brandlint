@@ -1,0 +1,10 @@
+{
+  "welcome": {
+    "title": "Welcome to {name}",
+    "cta": "Start your free trial",
+    "legal": "Tarnhollow Onramp is best-in-class."
+  },
+  "count": 3,
+  "docs_url": "https://docs.example.com/start",
+  "clean": "Tarnhollow Landing keeps onboarding simple."
+}

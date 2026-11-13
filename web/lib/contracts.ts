@@ -244,3 +244,55 @@ export type Workspace = {
     first_draft: boolean;
   };
 };
+
+// contracts/v4: the CI/CD integration (docs/ci-integration.md). A CI job submits the copy
+// files it found as a run and reads back the server's verdict.
+export type CIChannel =
+  | "blog"
+  | "linkedin"
+  | "email"
+  | "ad"
+  | "banner"
+  | "document";
+export type CIRunState = "queued" | "running" | "done" | "error";
+export type CIResult = "pass" | "fail";
+
+export type CIPolicy = {
+  severity_threshold: Severity;
+  fail_on_unsure: boolean;
+};
+
+export type CIFinding = {
+  id: string;
+  rule_id: string | null;
+  severity: Severity;
+  verdict: Verdict;
+  status: FindingStatus;
+  // A short quote of the flagged text.
+  span: string;
+  // 1-based line in the submitted text, when known.
+  line: number | null;
+  title: string;
+  url: string;
+  // True when this finding is why the run fails.
+  blocking: boolean;
+};
+
+export type CIFileResult = {
+  path: string;
+  content_id: string;
+  review_id: string;
+  state: CIRunState;
+  findings: CIFinding[];
+};
+
+export type CIRunStatus = {
+  id: string;
+  state: CIRunState;
+  // Set once the run is done. An error run has no result, and never counts as a pass.
+  result: CIResult | null;
+  reasons: string[];
+  files: CIFileResult[];
+  url: string;
+  policy: CIPolicy;
+};
