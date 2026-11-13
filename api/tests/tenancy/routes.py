@@ -35,6 +35,7 @@ EXEMPT_PREFIXES = ("/auth",)
 # The block that makes each router org-aware (docs/multitenancy.md).
 BLOCK_BY_PREFIX = {
     "/orgs": 1,
+    "/ci": 3,
     "/admin": 3,
     "/content": 3,
     "/insights": 3,

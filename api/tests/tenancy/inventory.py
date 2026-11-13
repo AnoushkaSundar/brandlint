@@ -28,6 +28,8 @@ TENANT_TABLES: dict[str, int] = {
     "assets": 3,
     "ingest_jobs": 3,
     "gaps": 3,
+    # The CI/CD integration (docs/ci-integration.md): its tables carry org_id from the start.
+    "service_tokens": 3,
     # Engine (Alapan).
     "chunks": 4,
     "claim_units": 4,

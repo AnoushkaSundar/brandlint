@@ -21,6 +21,8 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
+from integrations.fixtures import ALLOWED_PORTS
+
 
 def finding(file_path: str, kind: str) -> dict[str, Any]:
     unsure = kind == "unsure"
@@ -80,10 +82,12 @@ class FakeBrandLint:
 
         self._server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
         threading.Thread(target=self._server.serve_forever, daemon=True).start()
+        ALLOWED_PORTS.add(self._server.server_address[1])
         return self
 
     def __exit__(self, *exc: Any) -> None:
         if self._server:
+            ALLOWED_PORTS.discard(self._server.server_address[1])
             self._server.shutdown()
             self._server.server_close()
 

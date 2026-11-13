@@ -31,6 +31,16 @@ class Blocked(AssertionError):
     """Something in an isolation test tried to reach a model or the network."""
 
 
+def _is_a_fake_server(host, port) -> bool:
+    """Only the fake GitHub and fake BrandLint of the CI tests, on the loopback address."""
+    try:
+        from integrations.fixtures import ALLOWED_PORTS
+    except ImportError:  # the repo root isn't on the path, so there are no fakes
+        return False
+
+    return host in ("127.0.0.1", "localhost") and port in ALLOWED_PORTS
+
+
 def _blocked(*args, **kwargs):
     raise Blocked("An isolation test tried to reach the network")
 
@@ -79,12 +89,26 @@ def model_calls() -> list[str]:
 def sealed(monkeypatch, tmp_path, model_calls):
     monkeypatch.setenv("JWT_SECRET", "a-test-only-secret-that-is-long-enough-for-hs256")
     monkeypatch.setenv("UPLOAD_DIR", str(tmp_path / "uploads"))
+    # The CI routes ship off. The isolation suite covers them as if they were on.
+    monkeypatch.setenv("CI_INTEGRATION_ENABLED", "true")
 
     monkeypatch.setattr(llm, "_chat_completion", stand_in_model(model_calls))
     # Presidio is a separate service. Nothing it would find matters to isolation.
     monkeypatch.setattr(masking, "analyze", lambda text: [])
-    monkeypatch.setattr(socket, "getaddrinfo", _blocked)
-    monkeypatch.setattr(socket, "create_connection", _blocked)
+    real_getaddrinfo, real_create_connection = socket.getaddrinfo, socket.create_connection
+
+    def getaddrinfo(host, port, *args, **kwargs):
+        if _is_a_fake_server(host, port):
+            return real_getaddrinfo(host, port, *args, **kwargs)
+        return _blocked()
+
+    def create_connection(address, *args, **kwargs):
+        if _is_a_fake_server(*address[:2]):
+            return real_create_connection(address, *args, **kwargs)
+        return _blocked()
+
+    monkeypatch.setattr(socket, "getaddrinfo", getaddrinfo)
+    monkeypatch.setattr(socket, "create_connection", create_connection)
 
 
 @pytest.fixture(scope="module")

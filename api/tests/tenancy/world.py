@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from app.admin import models as admin
 from app.auth.models import User
 from app.auth.security import create_token
+from app.ci.models import ServiceToken
 from app.content import storage
 from app.content.models import Content, ContentVersion
 from app.db import Base
@@ -484,7 +485,17 @@ def build_org(session: Session, tag: str) -> OrgWorld:
     )
     run.finish("done", {"count": 2})
 
+    token = add(
+        ServiceToken,
+        id=f"tok-{tag}-1",
+        name=f"{marker} token",
+        token_hash=hashlib.sha256(f"bl_unused-{tag}".encode()).hexdigest(),
+        prefix="bl_unuse",
+        created_by=admin_user.id,
+    )
+
     ids = {
+        "token_id": token.id,
         "content_id": c1,
         "version_id": v1,
         "content_version_id": v1,
@@ -520,6 +531,7 @@ def build_org(session: Session, tag: str) -> OrgWorld:
         f"j-{tag}-1",
         f"g-{tag}-1",
         f"cm-{tag}-1",
+        token.id,
     }
     return OrgWorld(
         org=org,
