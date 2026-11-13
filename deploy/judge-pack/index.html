@@ -25,6 +25,8 @@
   a { color: var(--accent); }
   .lead { font-size: 1.1rem; color: var(--muted); }
   .button { display: inline-block; background: var(--accent); color: var(--accent-text); text-decoration: none; padding: 12px 20px; border-radius: 8px; font-weight: 600; }
+  .ghost { font: inherit; background: none; color: var(--accent); border: 1px solid var(--accent); padding: 11px 18px; border-radius: 8px; font-weight: 600; cursor: pointer; }
+  .ghost:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
   .button:focus-visible, a:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
   .box { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; margin: 12px 0; }
   .soft { background: var(--soft); border-color: transparent; }
@@ -40,6 +42,15 @@
   .small { font-size: .92rem; color: var(--muted); }
   code { background: var(--soft); padding: 1px 6px; border-radius: 4px; font-size: .92em; }
   .note { border-left: 4px solid var(--warn); padding-left: 12px; }
+  @media print {
+    :root { --bg: #fff; --card: #fff; --text: #111; --muted: #444; --line: #bbb; --accent: #2b2f94; --soft: #f0f0fa; --ok: #14582e; --warn: #7a4f00; }
+    body { font-size: 11pt; }
+    main { max-width: none; padding: 0; }
+    .box { break-inside: avoid; }
+    .button { border: 1px solid var(--accent); background: none; color: var(--accent); }
+    .ghost { display: none; }
+    h2 { break-after: avoid; }
+  }
 </style>
 </head>
 <body>
@@ -47,12 +58,13 @@
 
 <h1>BrandLint: a judge's guide</h1>
 <p class="lead">BrandLint checks a draft against an organisation's brand rules <em>before</em> it is published. Every flag cites the rule or approved fact it breaks, offers a small fix, and leaves the decision to a person. This page walks you through it in about ten minutes.</p>
-<p><a class="button" href="/">Start the demo</a> &nbsp; <a href="/login">or sign in as a specific person</a></p>
+<p><a class="button" href="/login">Open the demo</a> &nbsp; <button type="button" class="ghost" onclick="window.print()">Save this guide as a PDF</button></p>
+<p class="small">It opens the sign-in page. Click <strong>Start the demo</strong> there: no account or password is needed.</p>
 <p class="small">Everything you need is on this page: the steps, who to sign in as, and the sample files. You don't need an account. It is a demo with a fictional company, <strong>Tarnhollow</strong>, so nothing here is real data.</p>
 
 <div class="box soft">
   <h3>Prefer to be walked through?</h3>
-  <p>Click <strong>Start the demo</strong> on the home page. A <strong>Guided tour</strong> panel appears at the bottom left and takes you through the product, switching the person for you (about five minutes). This page is the same journey with the sample files to upload yourself. You can use either, or both.</p>
+  <p>On the sign-in page, click <strong>Start the demo</strong>. A <strong>Guided tour</strong> panel appears at the bottom left and takes you through the product, switching the person for you (about five minutes). This page is the same journey with the sample files to upload yourself. You can use either, or both.</p>
 </div>
 
 <h2>How the demo works</h2>
@@ -74,7 +86,7 @@
 <div class="box step"><div class="num">1</div><div>
   <span class="who">Creator · Priya</span>
   <h3>See what was submitted</h3>
-  <p>Sign in as <strong>Creator</strong> (or click <strong>Start the demo</strong>). Under <strong>Work → Content</strong> you'll see her drafts. Open the <strong>LinkedIn post</strong>.</p>
+  <p>On the sign-in page, click <strong>Start the demo</strong> (it signs you in as Priya), or the <strong>Creator</strong> button below it. Under <strong>Work → Content</strong> you'll see her drafts. Open the <strong>LinkedIn post</strong>.</p>
   <p class="see">You should see: the draft on the left with each problem highlighted, and the findings on the right, most serious first. Each one quotes the rule it breaks, such as R-INT-01 §7.1.</p>
 </div></div>
 
@@ -204,7 +216,7 @@
   <li><strong>Severity-gated overrides.</strong> Creators can ask to override low and medium findings; only a reviewer can override high and critical ones.</li>
 </ul>
 
-<p class="small">Stuck or something looks wrong? Reload the page. You can always click <strong>Start the demo</strong> on the home page to begin the guided tour again.</p>
+<p class="small">Stuck or something looks wrong? Reload the page. You can always go back to the <a href="/login">sign-in page</a> and click <strong>Start the demo</strong> to begin the guided tour again.</p>
 
 </main>
 </body>
