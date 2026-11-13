@@ -36,6 +36,13 @@ export function StartDemo() {
         {busy ? "Starting…" : "Start the demo"}
         <ArrowRight aria-hidden="true" />
       </Button>
+      {/* /judge/ is served by the proxy, not by Next, so this is a plain link, not <Link>. */}
+      <a
+        href="/judge/"
+        className="text-center text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+      >
+        Judge&apos;s guide and sample files
+      </a>
       {error && (
         <p role="alert" className="text-sm text-destructive">
           {error}

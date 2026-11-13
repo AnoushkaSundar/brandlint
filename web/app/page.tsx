@@ -191,6 +191,16 @@ export default function Home() {
               <p className="mt-4 text-sm text-white/40">
                 No sign-up needed · Guided tour included · Real AI checks
               </p>
+              {/* /judge/ is served by the proxy, not by Next, so this is a plain link. */}
+              <p className="mt-2 text-sm text-white/60">
+                Judging this?{" "}
+                <a
+                  href="/judge/"
+                  className="underline underline-offset-4 hover:text-white focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                >
+                  Open the judge&apos;s guide and sample files
+                </a>
+              </p>
             </div>
 
             <div className="relative flex justify-center md:justify-end">

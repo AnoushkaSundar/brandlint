@@ -92,7 +92,15 @@ export function DemoTour() {
         <div className="flex items-start justify-between gap-2 border-b px-4 py-3">
           <div>
             <p className="text-xs text-muted-foreground">
-              Step {state.step + 1} of {TOUR.length} · as {account.label}
+              Step {state.step + 1} of {TOUR.length} · as {account.label} ·{" "}
+              <a
+                href="/judge/"
+                target="_blank"
+                rel="noopener"
+                className="underline underline-offset-2 hover:text-foreground"
+              >
+                Guide and sample files
+              </a>
             </p>
             <h2 className="mt-0.5 text-base font-semibold">{step.title}</h2>
           </div>

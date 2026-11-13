@@ -80,7 +80,10 @@ export const TOUR: readonly TourStep[] = [
     place: { path: "/content" },
     title: "Welcome to BrandLint",
     see: "You're Priya, a writer at an agency working for Tarnhollow, a fictional HR software brand. These are drafts she has submitted. BrandLint has checked each one against Tarnhollow's approved rulebook and facts.",
-    steps: ["Have a look at the list, then press Next to open the LinkedIn post."],
+    steps: [
+      "Have a look at the list, then press Next to open the LinkedIn post.",
+      "The judge's guide, with the sample files to download, is linked at the top of this panel.",
+    ],
     why: "Every draft is checked before anyone can publish it.",
   },
   {
@@ -111,8 +114,8 @@ export const TOUR: readonly TourStep[] = [
     title: "A claim with no evidence",
     see: "“Guaranteed to double new-hire retention in 90 days.” No approved fact supports this.",
     steps: [
-      "Read the critical Claim finding. Instead of guessing, it asks the fact owner for evidence.",
-      "Read the High Claim finding below it: the word “guaranteed” breaks the rule against promising outcomes.",
+      "Read the High Claim finding that asks the fact owner for evidence, instead of guessing.",
+      "Read the other High Claim finding: the word “guaranteed” breaks the rule against promising outcomes.",
     ],
     why: "Claims are checked against the approved fact sheet, and numbers are compared in code, not by the AI.",
   },
