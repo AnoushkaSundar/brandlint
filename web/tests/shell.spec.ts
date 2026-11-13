@@ -5,8 +5,8 @@ import { expect, type Page, test } from "@playwright/test";
 // in the navigation config fails this test instead of agreeing with it.
 const NAV_BY_ROLE = {
   Creator: ["Content"],
-  Reviewer: ["Content", "Review queue"],
-  Manager: ["Content", "Approvals", "Insights", "Audit log"],
+  Reviewer: ["Content", "Review queue", "CI runs"],
+  Manager: ["Content", "Approvals", "Insights", "Audit log", "CI runs"],
   Legal: ["Content", "Approvals"],
   Admin: [
     "Content",
@@ -19,6 +19,8 @@ const NAV_BY_ROLE = {
     "Proposals",
     "Memory graph",
     "Audit log",
+    "CI runs",
+    "CI settings",
   ],
 };
 
@@ -33,6 +35,8 @@ const ROUTES: { path: string; title: string; role: RoleName }[] = [
   { path: "/brand/terms", title: "Terms", role: "Admin" },
   { path: "/brand/assets", title: "Assets", role: "Admin" },
   { path: "/people", title: "People", role: "Admin" },
+  { path: "/ci/runs", title: "CI runs", role: "Reviewer" },
+  { path: "/ci/settings", title: "CI settings", role: "Admin" },
   { path: "/insights", title: "Insights", role: "Manager" },
   { path: "/proposals", title: "Proposals", role: "Admin" },
   { path: "/graph", title: "Memory graph", role: "Admin" },

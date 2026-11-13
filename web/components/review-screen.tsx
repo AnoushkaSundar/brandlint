@@ -233,7 +233,13 @@ export function ReviewScreen({ id }: { id: string }) {
   const [chunks, setChunks] = useState<Chunk[]>([]);
   const [received, setReceived] = useState<Finding[]>([]);
   const [streamState, setStreamState] = useState<StreamState>("streaming");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const linkedFinding = useRef<string | null>(
+    typeof window === "undefined"
+      ? null
+      : new URLSearchParams(window.location.search).get("finding"),
+  );
+  const [selectedId, setSelectedId] = useState<string | null>(linkedFinding.current);
+  const openedFromLink = useRef(false);
   const [clauseRefs, setClauseRefs] = useState<ReadonlyMap<string, string>>(
     new Map(),
   );
@@ -246,6 +252,19 @@ export function ReviewScreen({ id }: { id: string }) {
   const streamRetries = useRef(0);
   const [error, setError] = useState<string | null>(null);
   const documentRef = useRef<HTMLDivElement>(null);
+
+  // A link from a CI run names the finding: it starts selected, and is brought into view once
+  // it has arrived.
+  useEffect(() => {
+    if (openedFromLink.current || !linkedFinding.current) return;
+    const wanted = linkedFinding.current;
+    if (!received.some((finding) => finding.id === wanted)) return;
+    openedFromLink.current = true;
+    window.setTimeout(
+      () => document.getElementById(`finding-${wanted}`)?.scrollIntoView({ block: "center" }),
+      0,
+    );
+  }, [received]);
 
   useEffect(() => {
     let current = true;

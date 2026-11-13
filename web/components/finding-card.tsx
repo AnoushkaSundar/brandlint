@@ -259,8 +259,9 @@ export function FindingCard({
 
   return (
     <article
+      id={`finding-${finding.id}`}
       className={cn(
-        "flex flex-col gap-3 rounded-xl border border-l-4 bg-card p-4 text-sm shadow-sm transition-shadow",
+        "flex flex-col gap-3 scroll-mt-20 rounded-xl border border-l-4 bg-card p-4 text-sm shadow-sm transition-shadow",
         SEVERITY_EDGE[finding.severity],
         selected ? "shadow-md ring-2 ring-ring" : "hover:shadow-md",
       )}

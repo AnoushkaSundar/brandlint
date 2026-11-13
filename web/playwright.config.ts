@@ -22,6 +22,10 @@ export default defineConfig({
     reuseExistingServer: !process.env.CI,
     timeout: 180_000,
     // A same-origin path that the tests stub, so they run without the API.
-    env: { NEXT_PUBLIC_API_URL: `${BASE_URL}/stub-api` },
+    env: {
+      NEXT_PUBLIC_API_URL: `${BASE_URL}/stub-api`,
+      // The CI pages are tested with the integration on.
+      NEXT_PUBLIC_CI_ENABLED: "true",
+    },
   },
 });
