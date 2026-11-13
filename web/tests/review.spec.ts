@@ -344,7 +344,14 @@ test.describe("review screen", () => {
 
     const paragraph = page.locator("p").filter({ has: highlight(page, "best-in-class") });
     await expect(paragraph).toBeVisible();
-    expect((await paragraph.innerText()).replace(/\s*\((critical|high|medium|low) finding\)/, "")).toBe(text);
+    // The highlight carries a screen-reader label, which can add a line break to innerText.
+    // Only whitespace is normalised, so words glued together still fail.
+    const painted = (await paragraph.innerText())
+      .replace(/\s+/g, " ")
+      .replace(/ ?\((critical|high|medium|low) finding\)/, "")
+      .replace(/\s+/g, " ")
+      .trim();
+    expect(painted).toBe(text);
   });
 
   test("shows the document with its planted issues highlighted", async ({
