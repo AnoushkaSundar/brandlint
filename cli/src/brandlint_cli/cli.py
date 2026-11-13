@@ -21,6 +21,7 @@ from brandlint_cli import __version__, git, output
 from brandlint_cli.client import Client, Masker, ServerError
 from brandlint_cli.config import CONFIG_NAME, ConfigError, load
 from brandlint_cli.discover import UsageError, discover, payload
+from brandlint_cli.extract import Extracted, ExtractionError, extract
 
 BATCH_FILES = 25
 BATCH_BYTES = 8 * 1024 * 1024
@@ -107,12 +108,25 @@ def run_check(
 
     warnings: list[str] = []
     files: list[dict[str, Any]] = []
+    extractions: dict[str, Extracted] = {}
     for candidate in found.files:
         item, why = payload(candidate)
         if item is None:
             found.skipped.append((candidate.path, why or "could not be read"))
-        else:
-            files.append(item)
+            continue
+        if "text" in item:
+            try:
+                extracted = extract(candidate.rule.extract, item["text"])
+            except ExtractionError as error:
+                found.skipped.append((candidate.path, str(error)))
+                continue
+            if not extracted.segments:
+                found.skipped.append((candidate.path, "has no copy in it, so there is nothing to check"))
+                continue
+            # Only the copy is sent, and its places are remembered for the report.
+            item["text"] = extracted.text
+            extractions[candidate.path] = extracted
+        files.append(item)
 
     if not files:
         out.write(mask(output.text([], warnings, found.skipped, "pass", "No copy files to check.")))
@@ -160,8 +174,13 @@ def run_check(
     else:
         result, code = "pass", 0
 
+    output.place_findings(statuses, extractions)
     if args.format == "json":
         text = output.as_json(statuses, warnings, found.skipped, result, code)
+    elif args.format == "github":
+        text = output.github(statuses, warnings, found.skipped, result)
+    elif args.format == "sarif":
+        text = output.sarif(statuses, found.skipped)
     else:
         text = output.text(statuses, warnings, found.skipped, result)
     out.write(mask(text))
