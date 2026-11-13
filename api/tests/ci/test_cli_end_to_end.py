@@ -12,15 +12,15 @@ from pathlib import Path
 
 import pytest
 import uvicorn
-from integrations.fixtures import ALLOWED_PORTS
 
+from integrations.fixtures import ALLOWED_PORTS
 from tests.ci.test_policy_and_waiver import waive_everything
 from tests.ci.test_runs import mock_app, person  # noqa: F401
 
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "cli" / "src"))
 
-from brandlint_cli.cli import main as cli_main  # noqa: E402
+from brandlint_cli.cli import main as cli_main
 
 
 @pytest.fixture()
