@@ -215,6 +215,12 @@ def record_decision(
             status.HTTP_422_UNPROCESSABLE_CONTENT, "An edited fix needs its text."
         )
 
+    # Take the piece before reading what has been decided. Two people acting at the same
+    # instant would otherwise both read the same status, both pass the check below, and both
+    # be saved: one finding with two contradictory rulings. With the lock the second waits,
+    # then sees the first one's decision and is refused. A no-op where there are no row locks
+    # (SQLite, used by most tests); Postgres, which production uses, honours it.
+    session.refresh(content, with_for_update=True)
     progress = finding_progress(session, review)
     before = progress.get(finding.id, FindingProgress()).status
     refused = refused_overrides(session, content.id)

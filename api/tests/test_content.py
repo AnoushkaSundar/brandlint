@@ -129,6 +129,8 @@ def test_every_channel_is_accepted(client_for, channel):
         ("data_class", "secret"),
         ("title", ""),
         ("source", ""),
+        ("title", "   "),
+        ("source", "  	 "),
     ],
 )
 def test_invalid_fields_are_refused(client_for, field, value):

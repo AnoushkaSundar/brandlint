@@ -239,6 +239,9 @@ def transition(
             status.HTTP_409_CONFLICT,
             "Copy sent from CI is checked here, never published.",
         )
+    # Take the piece and reload it, so two people moving it at once take turns and the second
+    # is judged against the state the first left it in, not the one it read before waiting.
+    session.refresh(content, with_for_update=True)
     review = latest_review(session, content.id)
     facts = _facts(session, content, review)
 

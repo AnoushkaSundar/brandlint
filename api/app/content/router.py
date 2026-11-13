@@ -147,6 +147,11 @@ def create_content(
     file: Upload = None,
 ) -> ContentDetail:
     _refuse_nul(title, source)
+    if not title.strip() or not source.strip():
+        # Whitespace passes a length check but leaves a piece nobody can find in a list.
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, "Give this piece a title and a source."
+        )
     limits.check_content(session)
     body, upload = _body_from(text, file)
     if upload is not None:
