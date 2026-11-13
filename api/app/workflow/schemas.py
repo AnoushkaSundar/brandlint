@@ -1,7 +1,7 @@
 from datetime import datetime
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, StringConstraints
 
 from app.content.schemas import ContentOut
 from app.contracts import (
@@ -16,9 +16,10 @@ from app.contracts import (
 
 class DecisionIn(BaseModel):
     action: DecisionAction
-    reason: str | None = None
+    # Bounded, so one request can't put a megabyte into the audit log.
+    reason: str | None = Field(default=None, max_length=2000)
     # The creator's wording, for edit_fix. accept_fix uses the engine's offer.
-    fix_text: str | None = None
+    fix_text: str | None = Field(default=None, max_length=10_000)
     # For accept_fix: which offer was on screen, so nothing unseen gets saved.
     attempt: int | None = None
 
@@ -30,7 +31,7 @@ class FixRequest(BaseModel):
 
 class TransitionIn(BaseModel):
     to: ContentState
-    reason: str | None = None
+    reason: str | None = Field(default=None, max_length=2000)
 
 
 class FindingStanding(BaseModel):
@@ -86,7 +87,7 @@ class Queue(BaseModel):
 
 
 class CommentIn(BaseModel):
-    body: str
+    body: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=5000)]
     content_version_id: str
     finding_id: str | None = None
     span: Span | None = None
