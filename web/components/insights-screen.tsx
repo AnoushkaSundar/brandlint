@@ -10,6 +10,7 @@ import {
   SELECT_STYLE,
   useLoaded,
 } from "@/components/brand-ui";
+import { CIInsightsCard } from "@/components/ci-insights";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { CHANNELS } from "@/lib/content";
@@ -327,6 +328,7 @@ export function InsightsScreen() {
           </div>
         </>
       )}
+      <CIInsightsCard />
     </div>
   );
 }

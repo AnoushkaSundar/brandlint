@@ -1,5 +1,7 @@
+import io
 import os
 import tempfile
+import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -39,6 +41,28 @@ class CheckedUpload:
     text: str
 
 
+# A DOCX is a zip. A small one can unpack to gigabytes, so the unpacked size, the number of
+# parts and how far any part shrinks are all capped before anything opens it.
+MAX_UNPACKED_BYTES = 100 * 1024 * 1024
+MAX_ZIP_MEMBERS = 2000
+MAX_SHRINK_RATIO = 200
+
+
+def _check_zip(data: bytes) -> None:
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as archive:
+            members = archive.infolist()
+    except zipfile.BadZipFile:
+        return  # not a zip at all: the parser reports an unreadable file, as it always has
+    unpacked = sum(member.file_size for member in members)
+    too_squeezed = any(
+        member.file_size > 1024 * 1024 and member.file_size > MAX_SHRINK_RATIO * max(member.compress_size, 1)
+        for member in members
+    )
+    if len(members) > MAX_ZIP_MEMBERS or unpacked > MAX_UNPACKED_BYTES or too_squeezed:
+        raise UploadRejected("That DOCX unpacks to far more than it should, so it was refused.")
+
+
 def check_upload(file_name: str, data: bytes) -> CheckedUpload:
     extension = Path(file_name).suffix.lower()
     if extension not in TEXT_EXTENSIONS and extension not in BINARY_SIGNATURES:
@@ -56,6 +80,8 @@ def check_upload(file_name: str, data: bytes) -> CheckedUpload:
 
     if not data.startswith(BINARY_SIGNATURES[extension]):
         raise UploadRejected(f"That file isn't a valid {extension[1:].upper()}.")
+    if extension == ".docx":
+        _check_zip(data)
     return CheckedUpload(extension, data, "")
 
 

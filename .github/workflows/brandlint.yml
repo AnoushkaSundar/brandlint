@@ -1,0 +1,31 @@
+# BrandLint checks the copy this repo keeps for its own demo, on every pull request.
+#
+# It does nothing until the repository has a variable BRANDLINT_SERVER (the API address) and a
+# secret BRANDLINT_TOKEN (a service token from CI settings), so it is safe to merge before the
+# integration is switched on (deploy/README.md, "Turning on CI checks"). Fork pull requests are
+# skipped: GitHub gives them no secrets. Blocking a merge needs this check to be required in
+# branch protection, which is a setting, not a file.
+name: BrandLint
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: brandlint-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  BrandLint:
+    if: vars.BRANDLINT_SERVER != '' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: ./integrations/github-action
+        with:
+          server: ${{ vars.BRANDLINT_SERVER }}
+          token: ${{ secrets.BRANDLINT_TOKEN }}

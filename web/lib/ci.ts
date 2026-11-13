@@ -111,3 +111,22 @@ jobs:
         env:
           BRANDLINT_TOKEN: \${{ secrets.BRANDLINT_TOKEN }}
 `;
+
+export type CIInsights = {
+  runs_30d: number;
+  runs_7d: number;
+  by_result: { pass: number; fail: number; error: number; running: number };
+  average_seconds: number | null;
+  failure_reasons: { reason: string; count: number }[];
+  tokens: {
+    name: string;
+    prefix: string;
+    runs_7d: number;
+    last_used_at: string | null;
+    revoked: boolean;
+  }[];
+};
+
+export function getCIInsights(): Promise<CIInsights> {
+  return apiFetch<CIInsights>("/insights/ci");
+}

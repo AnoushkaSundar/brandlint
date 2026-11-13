@@ -42,6 +42,18 @@
    - pressing **Replay** on a verdict shows "Identical result ✓".
 10. **Memory:** the graph view shows fact → claim → content for the edited fact.
 
+## Two-minute CI demo (optional)
+
+With `CI_INTEGRATION_ENABLED=true` on the API and `NEXT_PUBLIC_CI_ENABLED=true` in the web build, and a repo with the BrandLint Action and `BRANDLINT_TOKEN` set (see [`ci-quickstart.md`](ci-quickstart.md)):
+
+1. **Break a rule.** Open a pull request that changes `docs/launch.md` to say "Tarnhollow Onramp is the best-in-class way to onboard".
+2. **Watch the check fail.** The BrandLint check goes red in about a minute, the changed line is annotated, and one comment lists the findings with links. The merge is blocked because the check is required.
+3. **Click through.** The link opens the run page in BrandLint (sign in as Lena, the reviewer): each finding with its rule, severity and whether it blocks.
+4. **Fix or waive.** Fix the sentence and push (the check passes), or open the finding in the review screen and override it with a reason.
+5. **Watch it pass.** Re-run the check. The same copy finds the same review and reads Lena's decision, so the check goes green with no new review.
+
+For a demo without GitHub, `demo/check_ci.py` does steps 1 to 5 through the API, and `brandlint check` does them from a terminal.
+
 ## Acceptance criteria
 
 - Every step of the demo script works without manual database edits.

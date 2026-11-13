@@ -1,0 +1,12 @@
+# BrandLint checks the copy this repo keeps for its own demo (see .github/workflows/brandlint.yml).
+# No file is checked unless a rule here matches it.
+channels:
+  - glob: "demo/pieces/*.html"
+    channel: linkedin
+    extract: plain # plain, so a hidden-text check sees the whole page
+  - glob: "demo/pieces/*.docx"
+    channel: blog
+  - glob: "docs/ci-quickstart.md"
+    channel: document
+ignore:
+  - "docs/drafts/**"

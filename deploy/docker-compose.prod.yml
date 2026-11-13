@@ -34,6 +34,9 @@ services:
       # appends the real client address, which the signup rate limit reads.
       MULTI_TENANT_SIGNUP: ${MULTI_TENANT_SIGNUP:-false}
       TRUST_PROXY: "true"
+      # The CI/CD integration (docs/ci-integration.md) is off until the rollout in deploy/README.md.
+      CI_INTEGRATION_ENABLED: ${CI_INTEGRATION_ENABLED:-false}
+      CI_BASE_URL: https://${SITE_HOST}
       USE_MOCK_ENGINE: "false"
       USE_MOCK_GATEWAY: "false"
       USE_MOCK_MEMORY: "false"
@@ -50,6 +53,7 @@ services:
         NEXT_PUBLIC_API_URL: https://${SITE_HOST}/api
         NEXT_PUBLIC_DEMO_MODE: "true"
         NEXT_PUBLIC_MULTI_TENANT_SIGNUP: ${MULTI_TENANT_SIGNUP:-false}
+        NEXT_PUBLIC_CI_ENABLED: ${CI_INTEGRATION_ENABLED:-false}
 
   db:
     restart: unless-stopped

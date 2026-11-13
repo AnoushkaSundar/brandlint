@@ -85,6 +85,10 @@ RLS_TEST_DATABASE_URL=postgresql+psycopg://brandlint:brandlint@db:5432/postgres 
 python demo/check_workspaces.py                             # two workspaces on a running stack
 ```
 
+## CI/CD
+
+BrandLint can check the copy in a pull request before it merges: a GitHub Action, a pre-commit hook and the `brandlint` command send the changed copy files to your workspace, the server says whether a finding blocks, and each finding links to its card, where a reviewer can waive it. It ships off (`CI_INTEGRATION_ENABLED`). Start with [`docs/ci-quickstart.md`](docs/ci-quickstart.md) (five minutes), then [`docs/ci-integration.md`](docs/ci-integration.md). Tests: `pytest cli` (the command line, the Action's runner and the hook), `pytest api/tests/ci`, and `python demo/check_ci.py` on a running stack.
+
 ## Workspaces
 
 Each organisation is its own workspace, in one shared database: every tenant row carries an `org_id`, the app scopes every query by it (`app/tenancy`), and Postgres Row-Level Security refuses another org's rows even if a query forgets its filter ([`docs/rls.md`](docs/rls.md)). Tarnhollow is the demo workspace. With `MULTI_TENANT_SIGNUP=true`, a visitor can create a sandbox workspace of their own: it starts empty, has limits on people, content, uploads, reviews and model calls, and is deleted after a week by `python -m app.tenancy.expiry`. The design is in [`docs/multitenancy.md`](docs/multitenancy.md), and rolling it out is in [`deploy/README.md`](deploy/README.md).
