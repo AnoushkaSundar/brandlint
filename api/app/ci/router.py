@@ -9,13 +9,14 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel, Field
 
 from app.admin.edits import _audit
+from app.admin.rulebook import RulebookNotFound, rulebook_at
 from app.auth.defaults import utc_now
 from app.auth.dependencies import SessionDep, require_roles
 from app.auth.models import User
 from app.ci import auth, runs
 from app.ci.auth import CIPrincipal
-from app.ci.models import CIRun, ServiceToken
-from app.contracts import CIRunRequest, CIRunStatus, Role
+from app.ci.models import CIPolicySetting, CIRun, ServiceToken
+from app.contracts import CIRunRequest, CIRunStatus, Role, Severity
 from app.tenancy import scoped, scoped_get
 
 router = APIRouter(
@@ -160,3 +161,69 @@ def get_run(run_id: str, principal: CIPrincipal, session: SessionDep) -> CIRunSt
         # Another workspace's run and a missing one are the same answer.
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Run not found")
     return runs.build_status(session, run)
+
+
+# --- Policy: what counts as a failure ------------------------------------------------------
+
+
+class PolicySettings(BaseModel):
+    severity_threshold: Severity = Severity.medium
+    fail_on_unsure: bool = True
+    # Approved rules whose findings never fail a run.
+    ignore_rules: list[str] = Field(default_factory=list, max_length=100)
+    # A review that takes longer than this is an error, never a pass.
+    max_waiting_minutes: int = Field(default=15, ge=1, le=120)
+
+
+def _settings(session: SessionDep) -> PolicySettings:
+    policy = runs.load_policy(session)
+    return PolicySettings(
+        severity_threshold=policy.severity_threshold,
+        fail_on_unsure=policy.fail_on_unsure,
+        ignore_rules=sorted(policy.ignore_rules),
+        max_waiting_minutes=policy.max_waiting_minutes,
+    )
+
+
+@router.get("/policy", response_model=PolicySettings)
+def get_policy(principal: CIPrincipal, session: SessionDep) -> PolicySettings:
+    """The workspace's policy. A CI job can read it, to say what will fail."""
+    return _settings(session)
+
+
+@router.put("/policy", response_model=PolicySettings)
+def put_policy(
+    body: PolicySettings, admin: Admin, session: SessionDep
+) -> PolicySettings:
+    if body.ignore_rules:
+        try:
+            approved = {rule.id for rule in rulebook_at(session)}
+        except RulebookNotFound:
+            approved = set()
+        unknown = sorted(set(body.ignore_rules) - approved)
+        if unknown:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_CONTENT,
+                f"Only approved rules can be ignored: {', '.join(unknown)} isn't one.",
+            )
+    row = session.scalar(scoped(session, CIPolicySetting))
+    if row is None:
+        row = CIPolicySetting()
+        session.add(row)
+    row.severity_threshold = body.severity_threshold.value
+    row.fail_on_unsure = body.fail_on_unsure
+    row.ignore_rules = sorted(set(body.ignore_rules))
+    row.max_waiting_minutes = body.max_waiting_minutes
+    row.updated_by = admin.id
+    row.updated_at = utc_now()
+    _audit(
+        session,
+        admin,
+        "ci_policy_changed",
+        "ci_policy",
+        admin.org_id,
+        None,
+        body.model_dump(mode="json"),
+    )
+    session.commit()
+    return _settings(session)

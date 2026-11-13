@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from app.admin import models as admin
 from app.auth.models import User
 from app.auth.security import create_token
-from app.ci.models import CIRun, CIRunFile, ServiceToken
+from app.ci.models import CIPolicySetting, CIRun, CIRunFile, ServiceToken
 from app.content import storage
 from app.content.models import Content, ContentVersion
 from app.db import Base
@@ -517,6 +517,8 @@ def build_org(session: Session, tag: str) -> OrgWorld:
         version_id=v1,
         review_id=r1,
     )
+
+    add(CIPolicySetting, id=f"pol-{tag}-1", ignore_rules=[])
 
     ids = {
         "run_id": ci_run.id,

@@ -25,7 +25,8 @@ from app.auth.defaults import utc_now
 from app.auth.models import User
 from app.auth.security import hash_password
 from app.ci.auth import Principal
-from app.ci.models import CIRun, CIRunFile
+from app.ci.models import CIPolicySetting, CIRun, CIRunFile
+from app.ci.verdict import DEFAULT_POLICY, Policy, judge
 from app.clients import engine as engine_client
 from app.content import storage
 from app.content.access import latest_review
@@ -40,6 +41,7 @@ from app.contracts import (
     CIRunStatus,
     ContentState,
     FindingStatus,
+    Severity,
     Verdict,
 )
 from app.tenancy import limits, resolve_org, scoped, scoped_get
@@ -370,6 +372,19 @@ def _finding(run: CIRun, finding, progress, chunks, version_text: str) -> CIFind
     )
 
 
+def load_policy(session: Session) -> Policy:
+    """The workspace's policy, or the defaults until an admin has saved one."""
+    row = session.scalar(scoped(session, CIPolicySetting))
+    if row is None:
+        return DEFAULT_POLICY
+    return Policy(
+        Severity(row.severity_threshold),
+        row.fail_on_unsure,
+        frozenset(row.ignore_rules or []),
+        row.max_waiting_minutes,
+    )
+
+
 def _file_state(session: Session, review: Review) -> str:
     seen = engine_client.review_status(review.engine_review_id, session)
     return {"done": "done", "running": "running"}.get(seen, "error")
@@ -424,6 +439,7 @@ def build_status(session: Session, run: CIRun) -> CIRunStatus:
             )
         )
 
+    policy = load_policy(session)
     state, reasons = run.state, list(run.reasons or [])
     if state not in ("done", "error"):
         if "error" in states:
@@ -434,31 +450,54 @@ def build_status(session: Session, run: CIRun) -> CIRunStatus:
         elif states and all(s == "done" for s in states):
             state = "done"
         else:
-            waited = utc_now() - (
+            created = (
                 run.created_at
                 if run.created_at.tzinfo
                 else run.created_at.replace(tzinfo=utc_now().tzinfo)
             )
-            if waited > timedelta(minutes=_cap("CI_MAX_WAIT_MINUTES", 15)):
-                state, reasons = (
-                    "error",
-                    [
-                        "The review took too long, so the run can't say whether this passes."
-                    ],
-                )
+            if utc_now() - created > timedelta(minutes=policy.max_waiting_minutes):
+                state = "error"
+                reasons = [
+                    "The review took too long, so the run can't say whether this passes."
+                ]
             else:
                 state = "running"
-        if state != run.state:
-            run.state, run.reasons = state, reasons
-            if state in ("done", "error"):
-                run.finished_at = utc_now()
-            session.commit()
+    # The answer is worked out from the findings as they stand now and the policy as it is now,
+    # so a decision in the web app, or a changed policy, shows on the next read.
+    result = None
+    if state == "done":
+        result, reasons = judge(files, policy)
+    elif state == "error":
+        result = None
+    snapshot = {
+        "severity_threshold": policy.severity_threshold.value,
+        "fail_on_unsure": policy.fail_on_unsure,
+    }
+    changed = (state, result, reasons, run.policy) != (
+        run.state,
+        run.result,
+        list(run.reasons or []),
+        snapshot,
+    )
+    if changed:
+        run.state, run.result, run.reasons, run.policy = (
+            state,
+            result,
+            reasons,
+            snapshot,
+        )
+        if state in ("done", "error") and run.finished_at is None:
+            run.finished_at = utc_now()
+        session.commit()
     return CIRunStatus(
         id=run.id,
         state=state,
-        result=run.result,
+        result=result,
         reasons=reasons,
         files=files,
         url=f"{base_url()}/ci/runs/{run.id}",
-        policy=CIPolicy.model_validate(run.policy or {}),
+        policy=CIPolicy(
+            severity_threshold=policy.severity_threshold,
+            fail_on_unsure=policy.fail_on_unsure,
+        ),
     )

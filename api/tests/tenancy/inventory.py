@@ -32,6 +32,7 @@ TENANT_TABLES: dict[str, int] = {
     "service_tokens": 3,
     "ci_runs": 3,
     "ci_run_files": 3,
+    "ci_policies": 3,
     # Engine (Alapan).
     "chunks": 4,
     "claim_units": 4,
