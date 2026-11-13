@@ -95,5 +95,32 @@ cleo.post("/auth/login", json={"email": creator_email, "password": PASSWORD}).ra
 check(all(row["source"] != "ci" for row in cleo.get("/content").json()), "CI content is not in a creator's list")
 check(len(a2.get("/admin/users").json()) == 2, "the CI service user isn't listed as a person")
 
+print("== The verdict and a waiver")
+check(status["result"] == "fail" and status["reasons"], "the server says the run fails, and why")
+check(any(f["blocking"] for file in status["files"] for f in file["findings"]), "the findings that block are marked")
+policy = bot2.get("/ci/policy").json()
+check(policy["severity_threshold"] == "medium" and policy["fail_on_unsure"], "a job can read the policy: medium, UNSURE fails")
+check(bot2.put("/ci/policy", json=policy).status_code == 401, "a token can't change the policy")
+reviewer_email = f"rv-{uuid.uuid4().hex[:8]}@check.example"
+a2.post(
+    "/admin/users",
+    json={"email": reviewer_email, "name": "Lena", "role": "reviewer", "password": PASSWORD},
+).raise_for_status()
+lena = client()
+lena.post("/auth/login", json={"email": reviewer_email, "password": PASSWORD}).raise_for_status()
+waived = 0
+for file in status["files"]:
+    for found in file["findings"]:
+        if found["blocking"]:
+            action = "resolve" if found["verdict"] == "UNSURE" else "override"
+            reply = lena.post(
+                f"/workflow/content/{file['content_id']}/findings/{found['id']}/decisions",
+                json={"action": action, "reason": "Approved by brand review."},
+            )
+            waived += reply.status_code == 201
+check(waived > 0, f"a reviewer waives the blocking findings in the web app ({waived})")
+again2 = bot2.get(f"/ci/runs/{run_id}").json()
+check(again2["result"] == "pass" and not again2["reasons"], "the same run now passes, with no new run")
+
 print("\nPROBLEMS:", "none" if not problems else problems)
 sys.exit(1 if problems else 0)

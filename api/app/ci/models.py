@@ -4,7 +4,15 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.auth.defaults import new_id, utc_now
@@ -83,5 +91,25 @@ class CIRunFile(Base):
     version_id: Mapped[str] = mapped_column(ForeignKey("content_versions.id"))
     review_id: Mapped[str] = mapped_column(ForeignKey("reviews.id"))
     created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now
+    )
+
+
+class CIPolicySetting(Base):
+    """What counts as a failure for this workspace. One row per org, made when it is first saved;
+    until then the defaults apply (see app.ci.verdict.DEFAULT_POLICY)."""
+
+    __tablename__ = "ci_policies"
+    __table_args__ = (UniqueConstraint("org_id"),)
+    org_id: Mapped[str] = org_column()
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    severity_threshold: Mapped[str] = mapped_column(String(16), default="medium")
+    fail_on_unsure: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Approved rule ids whose findings never fail a run.
+    ignore_rules: Mapped[list] = mapped_column(JSON, default=list)
+    max_waiting_minutes: Mapped[int] = mapped_column(Integer, default=15)
+    updated_by: Mapped[str | None] = mapped_column(ForeignKey("users.id"))
+    updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now
     )

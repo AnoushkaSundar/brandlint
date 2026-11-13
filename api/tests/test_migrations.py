@@ -493,3 +493,20 @@ def test_the_ci_runs_migration_matches_the_models_and_downgrades(database, alemb
         assert not {"ci_runs", "ci_run_files"} & tables
         assert "external_ref" not in {c["name"] for c in inspect(connection).get_columns("content")}
     command.upgrade(alembic_config, "anoushka_0010")
+
+
+def test_the_ci_policies_migration_matches_the_model_and_downgrades(database, alembic_config):
+    command.upgrade(alembic_config, "anoushka_0011")
+
+    def only_policies(obj, name, kind, reflected, compare_to):
+        return kind != "table" or name == "ci_policies"
+
+    with database.connect() as connection:
+        context = MigrationContext.configure(
+            connection, opts={"compare_type": True, "include_object": only_policies}
+        )
+        assert compare_metadata(context, Base.metadata) == []
+    command.downgrade(alembic_config, "anoushka_0010")
+    with database.connect() as connection:
+        assert "ci_policies" not in inspect(connection).get_table_names()
+    command.upgrade(alembic_config, "anoushka_0011")
