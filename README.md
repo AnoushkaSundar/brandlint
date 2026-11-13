@@ -4,6 +4,8 @@ Pre-publication brand governance: every draft is reviewed against an approved ru
 
 Team **anoushkasundar**: Alapan Sen, Anoushka Sundar. Built for Inkloom AI's brand-governance problem statement.
 
+**Try it live:** <https://139.59.2.191.sslip.io>. Click **Start the demo** on the sign-in page: no account, and a guided tour switches you between the people in the workflow. A written walkthrough with the sample files to download is at <https://139.59.2.191.sslip.io/judge/>.
+
 - **Checks:** tone, terminology, messaging, unsupported claims, visual misuse and accessibility, on text, DOCX, PDF, HTML and images.
 - **No source, no flag:** a finding must cite a rule or an approved fact. Anything uncited goes to a guideline-gap log, never to the creator.
 - **Agents propose, people decide:** nothing is auto-approved or auto-fixed, and no AI can change a rule.
