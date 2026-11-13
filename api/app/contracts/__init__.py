@@ -7,6 +7,14 @@ through its own contracts/vN PR that both owners approve.
 
 from __future__ import annotations
 
+from .ci import (
+    CIFile,
+    CIFileResult,
+    CIFinding,
+    CIPolicy,
+    CIRunRequest,
+    CIRunStatus,
+)
 from .enums import (
     AssetKind,
     CheckType,
@@ -47,6 +55,12 @@ from .models import (
 __all__ = [
     "Asset",
     "AssetKind",
+    "CIFile",
+    "CIFileResult",
+    "CIFinding",
+    "CIPolicy",
+    "CIRunRequest",
+    "CIRunStatus",
     "CheckType",
     "Chunk",
     "ContentSource",

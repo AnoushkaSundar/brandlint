@@ -1,0 +1,22 @@
+# Which files hold copy, and how to read them. No file is scanned unless a rule matches it.
+server: https://brandlint.example
+channels:
+  - glob: "docs/**/*.md"
+    channel: blog
+  - glob: "site/**/*.html"
+    channel: blog
+    extract: plain
+  - glob: "i18n/*.json"
+    channel: email
+    extract: json-i18n
+  - glob: "i18n/*.yaml"
+    channel: email
+    extract: yaml-i18n
+  - glob: "locales/*.po"
+    channel: email
+    extract: po
+  - glob: "strings/*.properties"
+    channel: email
+    extract: properties
+ignore:
+  - "docs/drafts/**"

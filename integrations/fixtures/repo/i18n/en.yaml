@@ -1,0 +1,4 @@
+welcome:
+  title: "Welcome to {{name}}"
+  body: "Tarnhollow Onramp is guaranteed to double retention."
+footer: "Tarnhollow Landing, made for new teams."

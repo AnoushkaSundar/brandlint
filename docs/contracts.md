@@ -74,6 +74,19 @@ ContentSource { data_class, text, file_name?, file_bytes? }  # v3: in-process on
 - `file_bytes` is set for uploads and is the file's raw bytes. `file_name` gives the format. For pasted text both are empty and the engine parses `text`.
 - `ContentSource` is never sent over HTTP. Paths and file references stay out of it, so no client can point the engine at a file on the server.
 
+### contracts/v4 changes (CI/CD integration)
+
+New in `api/app/contracts/ci.py`, mirrored in `web/lib/contracts.ts`. A CI job submits the copy files it found and reads back the server's verdict (see `docs/ci-integration.md`). The server decides pass or fail, never the client.
+
+```
+CIFile       { path, channel: blog|linkedin|email|ad|banner|document, text? | file_b64?, data_class? }   # exactly one of text and file_b64
+CIRunRequest { repo, pr?, sha, base_sha?, files: [CIFile] }
+CIPolicy     { severity_threshold: Severity = medium, fail_on_unsure: bool = true }
+CIFinding    { id, rule_id?, severity, verdict, status, span, line?, title, url, blocking }
+CIFileResult { path, content_id, review_id, state: queued|running|done|error, findings: [CIFinding] }
+CIRunStatus  { id, state: queued|running|done|error, result?: pass|fail, reasons: [str], files: [CIFileResult], url, policy }
+```
+
 ## Service interfaces
 
 Alapan provides these. Anoushka mocks them under `api/mocks/` until they're built, and each one is switched with its own `USE_MOCK_*` flag.
