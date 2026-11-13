@@ -118,3 +118,28 @@ test("the runs list, and the CI filter on the content list", async ({ page }) =>
   await page.getByLabel("Show").selectOption("ci");
   await expect.poll(() => asked.length).toBeGreaterThan(0);
 });
+
+test("the insights view shows CI activity in counts, and nothing when there is none to read", async ({ page }) => {
+  await signIn(page, "admin");
+  await page.route("**/stub-api/insights/signals*", (route) =>
+    route.fulfill({ json: { pieces: 0, reviewed: 0, top_rules: [], override_rate_by_rule: {}, vote_split_by_rule: {}, findings_by_day: [], findings_by_check: {}, creator_signals: [], gaps: [], unavailable: [] } }),
+  );
+  await page.route("**/stub-api/governance/spot-checks", (route) => route.fulfill({ json: [] }));
+  await page.route("**/stub-api/insights/ci", (route) =>
+    route.fulfill({
+      json: {
+        runs_30d: 12,
+        runs_7d: 5,
+        by_result: { pass: 7, fail: 3, error: 1, running: 1 },
+        average_seconds: 41.5,
+        failure_reasons: [{ reason: "The review took too long, so the run can't say whether this passes.", count: 1 }],
+        tokens: [{ name: "GitHub Action", prefix: "bl_abcde", runs_7d: 5, last_used_at: null, revoked: false }],
+      },
+    }),
+  );
+  await page.goto("/insights");
+  const card = page.getByRole("region", { name: "CI runs" });
+  await expect(card).toContainText("5 in the last 7 days, 12 in 30");
+  await expect(card).toContainText("7 passed, 3 failed");
+  await noViolations(page);
+});

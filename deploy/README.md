@@ -61,6 +61,20 @@ Judges can create their own empty workspace, separate from the Tarnhollow demo. 
 
 **Roll back** if step 4 or 6 fails: set `MULTI_TENANT_SIGNUP=false` and rebuild web and api (the form disappears and the API answers 403 to signups). Nothing else needs undoing, because the demo is unaffected. To go back before the organisation migrations, stop the API, restore the dump from step 1 into a fresh database (`pg_restore -d brandlint --clean --if-exists`), and deploy the previous release.
 
+## Turning on CI checks
+
+The CI/CD integration (service tokens, runs, the GitHub Action, the pre-commit hook; see `docs/ci-integration.md`) ships off. Run these in order, and stop at the first step that fails.
+
+1. **Back up the database** and keep the file until the release is proven: `$C exec -T db pg_dump -U brandlint -Fc brandlint > backup-$(date +%F).dump`. This release adds migrations `anoushka_0009` to `anoushka_0011` (service tokens, CI runs and a column on content, CI policies).
+2. **Migrate as the owner, before the new API starts:** `$C run --rm --no-deps api alembic upgrade head`, then `$C up -d --build`.
+3. **Smoke test with the flag still off:** the demo and `demo/check_demo.py` must behave exactly as before, and `GET /api/ci/whoami` must be a 404.
+4. **Turn it on:** put `CI_INTEGRATION_ENABLED=true` in `.env` and rebuild web and api, because the navigation is fixed at build time: `$C up -d --build web api`.
+5. **Smoke test CI** against the demo workspace's own stack: `python demo/check_ci.py` (it makes two workspaces, needs `MULTI_TENANT_SIGNUP=true`, and calls no model).
+6. **Try a real pull request** on a throwaway repo with the Action (`docs/ci-quickstart.md`): a PR that breaks a rule must fail the required check, be waivable by a reviewer, and then pass.
+7. **Add the dogfood workflow's variables** if you want this repo checked too: set the repository variable `BRANDLINT_SERVER` and the secret `BRANDLINT_TOKEN`. Without them the workflow is skipped.
+
+**Roll back** if step 5 or 6 fails: set `CI_INTEGRATION_ENABLED=false` and rebuild web and api. Every `/ci` route, and the CI part of insights, is a 404 again, nothing else changes, and tokens stop working. To undo the migrations: stop the API, `$C run --rm --no-deps api alembic downgrade anoushka_0008`, and restore `backup-<date>.dump` if you need the old rows back. The downgrade drops every token, CI run and policy.
+
 ## Reset
 
 To clear what judges changed, delete the database volume, then rerun the four setup commands:

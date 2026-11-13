@@ -192,6 +192,7 @@ The routes the web app calls. Every one of them is inside the signed-in user's w
 | `DELETE /ci/tokens/{token_id}` | revoke a token; it stops working on the next request |
 | `POST /ci/runs` (`CIRunRequest`) → `CIRunStatus` | send copy files for review, as a token or an admin or creator; the same files again return the same run; 413 and 422 for a bad file or path; 429 over a quota |
 | `GET /ci/policy` `PUT /ci/policy` | what fails a run: a severity threshold, whether UNSURE fails, rules to ignore (approved ones only), and how long to wait for a review; an admin changes it, a CI job can read it |
+| `GET /insights/ci` | CI runs over the last month: results, average time, why runs errored, and per-token use; manager and admin |
 | `GET /ci/runs` → `[{id, repo, pr, sha, state, result, created_at, finished_at, files}]` | recent runs, newest first, filterable by `result` and `repo` |
 | `GET /ci/runs/{run_id}` → `CIRunStatus` | where the run stands; findings and their standing are read fresh each time |
 

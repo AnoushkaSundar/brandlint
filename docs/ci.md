@@ -1,5 +1,7 @@
 # BrandLint in CI and pre-commit
 
+> **Superseded.** This page describes the first version, which signed in with an email and password. The current integration (service tokens, a policy, the `brandlint` command, the GitHub Action and the pre-commit hook) is in [`ci-integration.md`](ci-integration.md); start with [`ci-quickstart.md`](ci-quickstart.md). The script and action described below still work but are not the recommended way.
+
 Review copy before it merges. A pull request that changes a copy file is sent through the
 same review engine a creator uses. If a finding blocks, the check fails, and each finding
 links to its review page, where a person can read why it was flagged and decide.
