@@ -10,6 +10,17 @@
 		}
 	}
 
+	# The judge's guide and the sample files it links to: plain files, no login.
+	redir /judge /judge/ 308
+	handle_path /judge/files/* {
+		root * /srv/judge-files
+		file_server
+	}
+	handle_path /judge/* {
+		root * /srv/judge
+		file_server
+	}
+
 	handle {
 		reverse_proxy web:3000
 	}
