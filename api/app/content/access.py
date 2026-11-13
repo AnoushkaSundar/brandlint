@@ -23,7 +23,9 @@ def readable_content(content_id: str, user: User, session: Session) -> Content:
 def latest_review(session: Session, content_id: str) -> Review | None:
     return session.scalar(
         scoped(session, Review)
-        .scoped_join(session, ContentVersion, Review.content_version_id == ContentVersion.id)
+        .scoped_join(
+            session, ContentVersion, Review.content_version_id == ContentVersion.id
+        )
         .where(ContentVersion.content_id == content_id)
         .order_by(Review.created_at.desc())
         .limit(1)

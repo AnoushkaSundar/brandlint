@@ -73,7 +73,9 @@ def _facts(session: Session, content: Content, review: Review | None) -> ReviewF
     if review is None:
         return ReviewFacts()
     return ReviewFacts(
-        findings=engine_client.list_findings(review.engine_review_id, org_id=bound_org(session)),
+        findings=engine_client.list_findings(
+            review.engine_review_id, org_id=bound_org(session)
+        ),
         progress=finding_progress(session, review),
         run_status=engine_client.review_status(review.engine_review_id, session),
         covers_latest=_covers_latest(session, content, review),
@@ -133,7 +135,9 @@ def _finding_in(
 ) -> tuple[Review, Finding, list[Finding]]:
     review = latest_review(session, content.id)
     findings = (
-        engine_client.list_findings(review.engine_review_id, org_id=bound_org(session)) if review else []
+        engine_client.list_findings(review.engine_review_id, org_id=bound_org(session))
+        if review
+        else []
     )
     finding = next((item for item in findings if item.id == finding_id), None)
     if review is None or finding is None:
@@ -209,8 +213,18 @@ def _fixed_text(session: Session, review: Review, facts: ReviewFacts) -> str | N
     """
     if all(item.fix_text is None for item in facts.progress.values()):
         return None
-    chunks = engine_client.list_chunks(review.engine_review_id, org_id=bound_org(session))
+    chunks = engine_client.list_chunks(
+        review.engine_review_id, org_id=bound_org(session)
+    )
     return fixes.text_with_fixes(chunks, facts.findings, facts.progress)
+
+
+CI_REFUSED_MOVES = {
+    ContentState.reviewer_check,
+    ContentState.manager_approval,
+    ContentState.legal_signoff,
+    ContentState.published,
+}
 
 
 @router.post("/content/{content_id}/transitions", response_model=Board)
@@ -218,6 +232,13 @@ def transition(
     content_id: str, body: TransitionIn, user: CurrentUser, session: SessionDep
 ) -> Board:
     content = readable_content(content_id, user, session)
+    if content.source == "ci" and body.to in CI_REFUSED_MOVES:
+        # Copy that CI sent is only ever checked here. It isn't a piece for approval or
+        # publication, and a reviewer's decisions on its findings are how a violation is waived.
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "Copy sent from CI is checked here, never published.",
+        )
     review = latest_review(session, content.id)
     facts = _facts(session, content, review)
 
@@ -237,7 +258,8 @@ def transition(
         except fixes.FixCannotApply:
             session.rollback()
             raise HTTPException(
-                status.HTTP_409_CONFLICT, "A saved fix can't be applied. Send this back."
+                status.HTTP_409_CONFLICT,
+                "A saved fix can't be applied. Send this back.",
             ) from None
         if fixed_text is not None:
             fixes.save_fixed_version(session, content, fixed_text, user)

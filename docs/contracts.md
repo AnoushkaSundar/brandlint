@@ -190,6 +190,8 @@ The routes the web app calls. Every one of them is inside the signed-in user's w
 | `GET /ci/whoami` → `{kind, name, role?}` | who the caller is: a service token or a signed-in person |
 | `GET /ci/tokens` `POST /ci/tokens {name, expires_in_days?}` | an admin lists their workspace's service tokens (prefix only) or creates one, shown once |
 | `DELETE /ci/tokens/{token_id}` | revoke a token; it stops working on the next request |
+| `POST /ci/runs` (`CIRunRequest`) → `CIRunStatus` | send copy files for review, as a token or an admin or creator; the same files again return the same run; 413 and 422 for a bad file or path; 429 over a quota |
+| `GET /ci/runs/{run_id}` → `CIRunStatus` | where the run stands; findings and their standing are read fresh each time |
 
 **Health**
 

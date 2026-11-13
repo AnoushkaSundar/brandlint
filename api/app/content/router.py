@@ -1,21 +1,31 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    UploadFile,
+    status,
+)
 from fastapi.responses import FileResponse
-from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.admin.rulebook import RulebookNotFound, current_rulebook_version, rulebook_at
 from app.auth.dependencies import CurrentUser, SessionDep, require_roles
 from app.auth.models import User
-from app.clients import engine as engine_client
 from app.content import rereview, storage
 from app.content.access import (
-    can_start_again,
     latest_review,
     readable_content,
 )
 from app.content.models import Content, ContentVersion
+from app.content.reviewing import add_version as _add_version
+from app.content.reviewing import (
+    begin_review,
+)
+from app.content.reviewing import versions as _versions
 from app.content.schemas import (
     Channel,
     ContentDetail,
@@ -23,12 +33,9 @@ from app.content.schemas import (
     ReviewOut,
     VersionOut,
 )
-from app.contracts import ContentSource, ContentState, DataClass, Role
-from app.gateway import budget
-from app.gateway.budget import BudgetExceeded
+from app.contracts import ContentState, DataClass, Role
 from app.tenancy import limits, scoped, scoped_get
 from app.workflow.models import Review
-from app.workflow.transitions import move_content
 
 router = APIRouter(prefix="/content", tags=["content"])
 
@@ -45,11 +52,6 @@ LOCKED_STATES = {
     ContentState.legal_signoff.value,
     ContentState.published.value,
     ContentState.rejected.value,
-}
-REVIEWABLE_STATES = {
-    ContentState.draft.value,
-    ContentState.ai_review.value,
-    ContentState.resolving.value,
 }
 
 
@@ -103,43 +105,6 @@ def _body_from(
     return upload.text, upload
 
 
-def _add_version(
-    session: Session,
-    content: Content,
-    user: User,
-    text: str,
-    upload: storage.CheckedUpload | None,
-    file_name: str | None,
-) -> ContentVersion:
-    latest = session.scalar(
-        scoped(session, ContentVersion, func.max(ContentVersion.version)).where(
-            ContentVersion.content_id == content.id
-        )
-    )
-    version = ContentVersion(
-        content_id=content.id,
-        version=(latest or 0) + 1,
-        text=text,
-        created_by=user.id,
-    )
-    session.add(version)
-    session.flush()
-    if upload is not None:
-        version.file_ref = storage.save_upload(user.org_id, version.id, upload)
-        version.file_name = file_name
-    return version
-
-
-def _versions(session: Session, content_id: str) -> list[ContentVersion]:
-    return list(
-        session.scalars(
-            scoped(session, ContentVersion)
-            .where(ContentVersion.content_id == content_id)
-            .order_by(ContentVersion.version.desc())
-        )
-    )
-
-
 def _detail(session: Session, content: Content) -> ContentDetail:
     versions = _versions(session, content.id)
     review = latest_review(session, content.id)
@@ -152,8 +117,19 @@ def _detail(session: Session, content: Content) -> ContentDetail:
 
 
 @router.get("", response_model=list[ContentOut])
-def list_content(user: CurrentUser, session: SessionDep) -> list[Content]:
+def list_content(
+    user: CurrentUser,
+    session: SessionDep,
+    source: Annotated[str | None, Query()] = None,
+) -> list[Content]:
     query = scoped(session, Content).order_by(Content.created_at.desc())
+    if source == "ci":
+        # Copy that CI sent is for reviewers and admins. A creator never sees it.
+        if user.role == Role.creator.value:
+            return []
+        query = query.where(Content.source == "ci")
+    else:
+        query = query.where(Content.source != "ci")
     if user.role == Role.creator.value:
         query = query.where(Content.creator_id == user.id)
     return list(session.scalars(query))
@@ -221,25 +197,6 @@ def add_version(
     return _detail(session, content)
 
 
-def _content_source(content: Content, version: ContentVersion) -> ContentSource:
-    """What the engine reviews. A lost file is refused before anything changes."""
-    file_bytes = None
-    if version.file_ref:
-        try:
-            file_bytes = storage.stored_path(version.file_ref).read_bytes()
-        except OSError:
-            raise HTTPException(
-                status.HTTP_409_CONFLICT,
-                "The uploaded file is missing. Upload it again to start a review.",
-            ) from None
-    return ContentSource(
-        data_class=content.data_class,
-        text=version.text,
-        file_name=version.file_name,
-        file_bytes=file_bytes,
-    )
-
-
 @router.post(
     "/{content_id}/reviews",
     response_model=ReviewOut,
@@ -247,69 +204,7 @@ def _content_source(content: Content, version: ContentVersion) -> ContentSource:
 )
 def start_review(content_id: str, user: Creator, session: SessionDep) -> Review:
     content = _owned(content_id, user, session)
-    if content.state not in REVIEWABLE_STATES:
-        raise HTTPException(
-            status.HTTP_409_CONFLICT,
-            "This content can't be reviewed in its current state.",
-        )
-    latest = _versions(session, content_id)[0]
-    previous = latest_review(session, content_id)
-    # Reviewing the same text against the same rules would only wipe the decisions.
-    # A new rulebook is a real reason to look again, for "Rules updated: re-check?".
-    if (
-        content.state == ContentState.resolving.value
-        and previous is not None
-        and previous.content_version_id == latest.id
-        and previous.rulebook_version == current_rulebook_version(session)
-        # A changed fact is a real reason too, once an admin has asked.
-        and rereview.pending(session, content_id, previous) is None
-    ):
-        raise HTTPException(
-            status.HTTP_409_CONFLICT, "Add a new version to review it again."
-        )
-    if content.state == ContentState.ai_review.value and previous is not None:
-        run = engine_client.review_status(previous.engine_review_id, session)
-        if not can_start_again(content.state, run):
-            message = (
-                "This review is still running."
-                if run == "running"
-                else ("This review has already finished.")
-            )
-            raise HTTPException(status.HTTP_409_CONFLICT, message)
-    limits.check_reviews_today(session)
-    try:
-        budget.check(session)
-    except BudgetExceeded as exc:
-        raise limits.over(str(exc)) from None
-    # A review against no rules would pass everything, so say what is missing instead.
-    try:
-        rulebook_at(session)
-    except RulebookNotFound:
-        raise HTTPException(
-            status.HTTP_409_CONFLICT,
-            "This workspace has no approved rules yet. Ask an admin to upload the brand "
-            "guidelines and approve the rules, then review again.",
-        ) from None
-    source = _content_source(content, latest)
-    rulebook_version = current_rulebook_version(session)
-    review = Review(
-        content_version_id=latest.id,
-        engine_review_id=engine_client.start_review(
-            latest.id, content.channel, rulebook_version, source, org_id=user.org_id
-        ),
-        channel=content.channel,
-        rulebook_version=rulebook_version,
-    )
-    session.add(review)
-    move_content(
-        session,
-        content,
-        ContentState.ai_review,
-        user,
-        rulebook_version=rulebook_version,
-    )
-    session.commit()
-    return review
+    return begin_review(session, content, user)
 
 
 @router.get("/versions/{version_id}/file")

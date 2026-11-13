@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from app.admin import models as admin
 from app.auth.models import User
 from app.auth.security import create_token
-from app.ci.models import ServiceToken
+from app.ci.models import CIRun, CIRunFile, ServiceToken
 from app.content import storage
 from app.content.models import Content, ContentVersion
 from app.db import Base
@@ -494,7 +494,32 @@ def build_org(session: Session, tag: str) -> OrgWorld:
         created_by=admin_user.id,
     )
 
+    ci_run = add(
+        CIRun,
+        id=f"run-{tag}-1",
+        run_key=hashlib.sha256(f"key-{tag}".encode()).hexdigest(),
+        repo=f"{tag.lower()}/repo",
+        pr=1,
+        sha="abc",
+        state="done",
+        result="pass",
+        reasons=[],
+        policy={},
+    )
+    add(
+        CIRunFile,
+        id=f"runfile-{tag}-1",
+        run_id=ci_run.id,
+        path=f"{marker}.md",
+        text_hash=hashlib.sha256(f"text-{tag}".encode()).hexdigest(),
+        size=10,
+        content_id=c1,
+        version_id=v1,
+        review_id=r1,
+    )
+
     ids = {
+        "run_id": ci_run.id,
         "token_id": token.id,
         "content_id": c1,
         "version_id": v1,
@@ -532,6 +557,7 @@ def build_org(session: Session, tag: str) -> OrgWorld:
         f"g-{tag}-1",
         f"cm-{tag}-1",
         token.id,
+        ci_run.id,
     }
     return OrgWorld(
         org=org,

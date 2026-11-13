@@ -12,13 +12,15 @@ from app.admin.edits import _audit
 from app.auth.defaults import utc_now
 from app.auth.dependencies import SessionDep, require_roles
 from app.auth.models import User
-from app.ci import auth
+from app.ci import auth, runs
 from app.ci.auth import CIPrincipal
-from app.ci.models import ServiceToken
-from app.contracts import Role
+from app.ci.models import CIRun, ServiceToken
+from app.contracts import CIRunRequest, CIRunStatus, Role
 from app.tenancy import scoped, scoped_get
 
-router = APIRouter(prefix="/ci", tags=["ci"], dependencies=[Depends(auth.require_enabled)])
+router = APIRouter(
+    prefix="/ci", tags=["ci"], dependencies=[Depends(auth.require_enabled)]
+)
 
 Admin = Annotated[User, Depends(require_roles(Role.admin))]
 
@@ -76,11 +78,15 @@ def _out(row: ServiceToken) -> dict:
 
 @router.get("/tokens", response_model=list[TokenOut])
 def list_tokens(admin: Admin, session: SessionDep) -> list[dict]:
-    rows = session.scalars(scoped(session, ServiceToken).order_by(ServiceToken.created_at.desc()))
+    rows = session.scalars(
+        scoped(session, ServiceToken).order_by(ServiceToken.created_at.desc())
+    )
     return [_out(row) for row in rows]
 
 
-@router.post("/tokens", response_model=TokenCreated, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/tokens", response_model=TokenCreated, status_code=status.HTTP_201_CREATED
+)
 def create_token(body: TokenIn, admin: Admin, session: SessionDep) -> dict:
     raw, digest = auth.new_token()
     row = ServiceToken(
@@ -94,7 +100,15 @@ def create_token(body: TokenIn, admin: Admin, session: SessionDep) -> dict:
     )
     session.add(row)
     session.flush()
-    _audit(session, admin, "ci_token_created", "service_token", row.id, None, {"name": row.name, "prefix": row.prefix})
+    _audit(
+        session,
+        admin,
+        "ci_token_created",
+        "service_token",
+        row.id,
+        None,
+        {"name": row.name, "prefix": row.prefix},
+    )
     session.commit()
     return {**_out(row), "token": raw}
 
@@ -107,6 +121,42 @@ def revoke_token(token_id: str, admin: Admin, session: SessionDep) -> Response:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Token not found")
     if row.revoked_at is None:
         row.revoked_at = utc_now()
-        _audit(session, admin, "ci_token_revoked", "service_token", row.id, {"name": row.name}, None)
+        _audit(
+            session,
+            admin,
+            "ci_token_revoked",
+            "service_token",
+            row.id,
+            {"name": row.name},
+            None,
+        )
         session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# --- Runs: a CI job submits files and reads the verdict ------------------------------------
+
+
+@router.post("/runs", response_model=CIRunStatus, status_code=status.HTTP_201_CREATED)
+def create_run(
+    body: CIRunRequest, principal: CIPrincipal, session: SessionDep, response: Response
+) -> CIRunStatus:
+    """Sends copy files through review. Sending the same thing again returns the same run."""
+    if principal.user is not None and principal.user.role not in (
+        Role.admin.value,
+        Role.creator.value,
+    ):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Not allowed for your role")
+    run, created = runs.submit(session, principal, body)
+    if not created:
+        response.status_code = status.HTTP_200_OK
+    return runs.build_status(session, run)
+
+
+@router.get("/runs/{run_id}", response_model=CIRunStatus)
+def get_run(run_id: str, principal: CIPrincipal, session: SessionDep) -> CIRunStatus:
+    run = scoped_get(session, CIRun, run_id)
+    if run is None:
+        # Another workspace's run and a missing one are the same answer.
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Run not found")
+    return runs.build_status(session, run)

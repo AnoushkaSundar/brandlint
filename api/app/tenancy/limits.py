@@ -49,7 +49,10 @@ def check_users(session: Session) -> None:
     if not is_sandbox(session):
         return
     limit = caps()["users"]
-    if session.scalar(scoped(session, User, func.count())) >= limit:
+    from app.ci.runs import not_a_ci_person
+
+    # The CI service user isn't a person, so it doesn't use up a place.
+    if session.scalar(scoped(session, User, func.count()).where(not_a_ci_person())) >= limit:
         raise over(f"This workspace is limited to {limit} people.")
 
 
