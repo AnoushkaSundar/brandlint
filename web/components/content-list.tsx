@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/components/auth-provider";
 import { buttonVariants } from "@/components/ui/button";
 import { ApiError } from "@/lib/api";
+import { CI_ENABLED } from "@/lib/navigation";
 import {
   channelLabel,
   type ContentSummary,
@@ -17,10 +18,11 @@ export function ContentList() {
   const { user } = useAuth();
   const [items, setItems] = useState<ContentSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [fromCI, setFromCI] = useState(false);
 
   useEffect(() => {
     let current = true;
-    listContent().then(
+    listContent(fromCI ? "ci" : undefined).then(
       (loaded) => {
         if (current) setItems(loaded);
       },
@@ -31,7 +33,7 @@ export function ContentList() {
     return () => {
       current = false;
     };
-  }, []);
+  }, [fromCI]);
 
   const canSubmit = user.role === "creator";
 
@@ -50,6 +52,24 @@ export function ContentList() {
           </Link>
         )}
       </div>
+
+      {user.role !== "creator" && CI_ENABLED && (
+        <div className="mt-4 flex items-center gap-2 text-sm">
+          <label htmlFor="content-source">Show</label>
+          <select
+            id="content-source"
+            value={fromCI ? "ci" : "all"}
+            onChange={(event) => {
+              setItems(null);
+              setFromCI(event.target.value === "ci");
+            }}
+            className="h-9 rounded-md border bg-background px-2"
+          >
+            <option value="all">Submitted content</option>
+            <option value="ci">Sent from CI</option>
+          </select>
+        </div>
+      )}
 
       <div className="mt-6">
         {error && (

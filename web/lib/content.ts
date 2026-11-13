@@ -87,8 +87,9 @@ export function channelLabel(value: string): string {
   return CHANNELS.find((channel) => channel.value === value)?.label ?? value;
 }
 
-export function listContent(): Promise<ContentSummary[]> {
-  return apiFetch<ContentSummary[]>("/content");
+// "ci" is copy that a CI job sent. It is hidden from every other list.
+export function listContent(source?: "ci"): Promise<ContentSummary[]> {
+  return apiFetch<ContentSummary[]>(source ? `/content?source=${source}` : "/content");
 }
 
 export function getContent(id: string): Promise<ContentDetail> {

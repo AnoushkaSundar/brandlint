@@ -7,7 +7,9 @@ import {
   ListChecks,
   type LucideIcon,
   Network,
+  Settings,
   Users,
+  Workflow,
   Quote,
   ScrollText,
   ShieldCheck,
@@ -141,10 +143,32 @@ export const NAV_GROUPS: readonly NavGroup[] = [
       },
     ],
   },
+  {
+    label: "CI",
+    items: [
+      {
+        title: "CI runs",
+        href: "/ci/runs",
+        summary: "What BrandLint found in the copy each pull request changed.",
+        icon: Workflow,
+        roles: ["reviewer", "manager", "admin"],
+      },
+      {
+        title: "CI settings",
+        href: "/ci/settings",
+        summary: "What fails a check, and the tokens a CI job signs in with.",
+        icon: Settings,
+        roles: ["admin"],
+      },
+    ],
+  },
 ];
 
+// The CI/CD integration ships off. Its pages are only offered when the web build says it is on.
+export const CI_ENABLED = process.env.NEXT_PUBLIC_CI_ENABLED === "true";
+
 export function navForRole(role: Role): NavGroup[] {
-  return NAV_GROUPS.map((group) => ({
+  return NAV_GROUPS.filter((group) => CI_ENABLED || group.label !== "CI").map((group) => ({
     ...group,
     items: group.items.filter((item) => item.roles.includes(role)),
   })).filter((group) => group.items.length > 0);

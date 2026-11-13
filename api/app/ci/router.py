@@ -5,8 +5,9 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel, Field
+from sqlalchemy import func
 
 from app.admin.edits import _audit
 from app.admin.rulebook import RulebookNotFound, rulebook_at
@@ -15,7 +16,7 @@ from app.auth.dependencies import SessionDep, require_roles
 from app.auth.models import User
 from app.ci import auth, runs
 from app.ci.auth import CIPrincipal
-from app.ci.models import CIPolicySetting, CIRun, ServiceToken
+from app.ci.models import CIPolicySetting, CIRun, CIRunFile, ServiceToken
 from app.contracts import CIRunRequest, CIRunStatus, Role, Severity
 from app.tenancy import scoped, scoped_get
 
@@ -152,6 +153,56 @@ def create_run(
     if not created:
         response.status_code = status.HTTP_200_OK
     return runs.build_status(session, run)
+
+
+class RunSummary(BaseModel):
+    id: str
+    repo: str
+    pr: int | None
+    sha: str
+    state: str
+    result: str | None
+    created_at: datetime
+    finished_at: datetime | None
+    files: int
+
+
+@router.get("/runs", response_model=list[RunSummary])
+def list_runs(
+    principal: CIPrincipal,
+    session: SessionDep,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    result: str | None = None,
+    repo: str | None = None,
+) -> list[dict]:
+    """Recent runs, newest first. The state and result are as of the run's last read."""
+    query = scoped(session, CIRun).order_by(CIRun.created_at.desc()).limit(limit)
+    if result:
+        query = query.where(CIRun.result == result)
+    if repo:
+        query = query.where(CIRun.repo == repo)
+    rows = list(session.scalars(query))
+    counts = dict(
+        session.execute(
+            scoped(session, CIRunFile, CIRunFile.run_id, func.count())
+            .where(CIRunFile.run_id.in_([row.id for row in rows]))
+            .group_by(CIRunFile.run_id)
+        ).all()
+    )
+    return [
+        {
+            "id": row.id,
+            "repo": row.repo,
+            "pr": row.pr,
+            "sha": row.sha,
+            "state": row.state,
+            "result": row.result,
+            "created_at": row.created_at,
+            "finished_at": row.finished_at,
+            "files": counts.get(row.id, 0),
+        }
+        for row in rows
+    ]
 
 
 @router.get("/runs/{run_id}", response_model=CIRunStatus)

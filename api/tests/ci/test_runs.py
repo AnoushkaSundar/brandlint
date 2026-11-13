@@ -257,3 +257,15 @@ def test_a_signed_in_creator_or_admin_can_start_a_run_but_a_reviewer_cannot(worl
     body = request(text_file("a.md", "Some copy."))
     assert person(mock_app, world.a.creator).post("/ci/runs", json=body).status_code == 201
     assert person(mock_app, world.a.reviewer).post("/ci/runs", json={**body, "sha": "z"}).status_code == 403
+
+
+def test_the_runs_list_shows_only_the_workspaces_own_runs_newest_first(bot, world, client_for, mock_app):
+    bot.post("/ci/runs", json=request(text_file("a.md", "One."), pr=1, sha="1"))
+    bot.post("/ci/runs", json=request(text_file("a.md", "Two."), pr=2, sha="2"))
+    rows = person(mock_app, world.a.reviewer).get("/ci/runs").json()
+    assert [r["pr"] for r in rows][:2] == [2, 1] and all(r["files"] >= 0 for r in rows)
+    assert {r["id"] for r in person(mock_app, world.b.reviewer).get("/ci/runs").json()}.isdisjoint(
+        {r["id"] for r in rows}
+    )
+    assert all(r["repo"] == "acme/site" for r in bot.get("/ci/runs?repo=acme/site").json())
+    assert bot.get("/ci/runs?repo=nope").json() == []
